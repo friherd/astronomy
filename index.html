@@ -90,6 +90,18 @@
     color: var(--accent); font-size: 0.78rem; font-weight: 600;
   }
   .badge-out { color: var(--muted); opacity: 0.5; }
+  .passes { margin-top: 20px; }
+  .passes h3 {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--muted); font-weight: 600; margin-bottom: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .passrow { display: flex; align-items: baseline; gap: 10px; padding: 5px 8px; font-size: 0.87rem; }
+  .passrow .pname { display: flex; align-items: center; gap: 9px; width: 104px; font-weight: 600; }
+  .passrow .pname .sym { width: 1.3em; text-align: center; font-size: 1.05rem; }
+  .passrow .ptime { font-variant-numeric: tabular-nums; }
+  .passrow .pdur { color: var(--muted); font-size: 0.8rem; }
+  .passrow.none { color: var(--muted); opacity: 0.55; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
 </style>
 </head>
@@ -123,6 +135,8 @@
       <tbody id="rows"></tbody>
     </table>
 
+    <div class="passes" id="passes"></div>
+
     <footer>Computed in-browser · NOAA solar + Schlyter lunar &amp; planetary algorithms</footer>
   </div>
 
@@ -141,6 +155,11 @@ const ELEVATION_WINDOW = [0, 16];
 const inWindow = (az, el) =>
   az >= AZIMUTH_WINDOW[0] && az <= AZIMUTH_WINDOW[1] &&
   el >= ELEVATION_WINDOW[0] && el <= ELEVATION_WINDOW[1];
+
+// How far ahead to look for the next window pass, and the coarse scan step.
+const WINDOW_HORIZON_DAYS = 7;
+const WINDOW_HORIZON_MS = WINDOW_HORIZON_DAYS * 24 * 3600 * 1000;
+const WINDOW_STEP_MS = 3 * 60 * 1000;
 
 // --- Degree-based trig helpers ---
 const RAD = Math.PI / 180, DEG = 180 / Math.PI;
@@ -436,6 +455,59 @@ function riseSet(posFn, dayStart, h0 = -0.833) {
   return { rise, set };
 }
 
+// --- Window passes: next interval a body spends inside the window ---
+function inWindowAt(posFn, ms) {
+  const p = posFn(new Date(ms));
+  return inWindow(p.az, p.el);
+}
+
+function windowEdge(posFn, a, b) {     // a, b (ms) bracket an in/out transition
+  const insideA = inWindowAt(posFn, a);
+  while (b - a > 1000) {
+    const mid = (a + b) / 2;
+    if (inWindowAt(posFn, mid) === insideA) a = mid;
+    else b = mid;
+  }
+  return new Date((a + b) / 2);
+}
+
+function nextWindowPass(posFn, startMs) {
+  const end = startMs + WINDOW_HORIZON_MS;
+
+  if (inWindowAt(posFn, startMs)) {
+    // Already inside: walk back (capped at a day) for the true entry.
+    let entry = new Date(startMs);
+    const backCap = startMs - 24 * 3600 * 1000;
+    let tb = startMs;
+    while (tb > backCap) {
+      const tbPrev = tb; tb -= WINDOW_STEP_MS;
+      if (!inWindowAt(posFn, tb)) { entry = windowEdge(posFn, tb, tbPrev); break; }
+    }
+    let tf = startMs;
+    while (tf < end) {
+      const tfPrev = tf; tf += WINDOW_STEP_MS;
+      if (!inWindowAt(posFn, tf)) return { entry, exit: windowEdge(posFn, tfPrev, tf) };
+    }
+    return { entry, exit: null };
+  }
+
+  // Not inside: scan forward for the entry, then the following exit.
+  let t = startMs;
+  while (t < end) {
+    const tPrev = t; t += WINDOW_STEP_MS;
+    if (inWindowAt(posFn, t)) {
+      const entry = windowEdge(posFn, tPrev, t);
+      let t2 = entry.getTime();
+      while (t2 < end) {
+        const t2Prev = t2; t2 += WINDOW_STEP_MS;
+        if (!inWindowAt(posFn, t2)) return { entry, exit: windowEdge(posFn, t2Prev, t2) };
+      }
+      return { entry, exit: null };
+    }
+  }
+  return { entry: null, exit: null };
+}
+
 // --- Timezone helpers: work in Paris local time regardless of viewer ---
 function tzOffsetMs(date, tz) {
   const dtf = new Intl.DateTimeFormat("en-US", {
@@ -557,8 +629,41 @@ function tick() {
   updateSky(sunEl);
 }
 
+// --- Next window pass per body (heavier scan; refreshed once a minute) ---
+function passStamp(d, now) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+  const hm = { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false };
+  if (day.format(d) === day.format(now)) return new Intl.DateTimeFormat("fr-FR", hm).format(d);
+  return new Intl.DateTimeFormat("fr-FR", { ...hm, weekday: "short", day: "numeric" }).format(d);
+}
+
+function renderPasses() {
+  const now = new Date();
+  let html = `<h3>Next window pass (within ${WINDOW_HORIZON_DAYS} days)</h3>`;
+  for (const b of BODIES) {
+    const { entry, exit } = nextWindowPass(b.fn, now.getTime());
+    let timeStr, durStr = "", cls = "";
+    if (!entry) {
+      timeStr = "—"; cls = "none";
+    } else {
+      const e = passStamp(entry, now);
+      const x = exit ? passStamp(exit, now) : "(ongoing)";
+      timeStr = `${e} → ${x}`;
+      if (exit) durStr = `(${Math.round((exit - entry) / 60000)} min)`;
+    }
+    html += `<div class="passrow ${cls}">
+      <span class="pname"><span class="sym">${b.sym}</span>${b.name}</span>
+      <span class="ptime">${timeStr}</span>
+      <span class="pdur">${durStr}</span>
+    </div>`;
+  }
+  document.getElementById("passes").innerHTML = html;
+}
+
 tick();
 setInterval(tick, 1000);
+renderPasses();
+setInterval(renderPasses, 60000);
 </script>
 </body>
 </html>
