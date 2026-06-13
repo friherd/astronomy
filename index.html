@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nice, France — Sky</title>
+<style>
+  :root {
+    --bg-top: #1a2a4a;
+    --bg-bottom: #0a1428;
+    --card: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.12);
+    --text: #f4f7fb;
+    --muted: #9fb0c8;
+    --accent: #ffd479;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+    color: var(--text);
+    padding: 24px;
+    transition: background 1.5s ease;
+  }
+  .card {
+    width: 100%;
+    max-width: 580px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 32px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+  }
+  header { text-align: center; margin-bottom: 8px; }
+  .place { font-size: 1.05rem; letter-spacing: 0.3px; color: var(--muted); }
+  .place .flag { font-size: 1.3rem; vertical-align: -2px; }
+  .clock { font-size: 3.4rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+  .date { font-size: 1.05rem; color: var(--muted); text-transform: capitalize; }
+  .tz { font-size: 0.8rem; color: var(--muted); margin-top: 4px; opacity: 0.8; }
+
+  .sky {
+    position: relative;
+    height: 140px;
+    margin: 24px 0 8px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .horizon { position: absolute; left: 0; right: 0; bottom: 26px; height: 1px; background: rgba(255,255,255,0.25); }
+  .sky-labels { position: absolute; left: 0; right: 0; bottom: 6px; display: flex; justify-content: space-between; padding: 0 10px; font-size: 0.7rem; color: var(--muted); }
+  .body {
+    position: absolute; transform: translate(-50%, 50%);
+    font-size: 1.25rem; line-height: 1;
+    transition: left 1s ease, bottom 1s ease, opacity 1s ease;
+    filter: drop-shadow(0 0 6px rgba(255,212,121,0.45));
+    pointer-events: none;
+  }
+  .body.below { opacity: 0.25; filter: grayscale(0.7); }
+
+  table.bodies { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 0.9rem; }
+  table.bodies th {
+    text-align: left; color: var(--muted); font-weight: 600;
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 0 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  table.bodies th.num, table.bodies td.num { text-align: right; }
+  table.bodies td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
+  table.bodies tr:last-child td { border-bottom: none; }
+  .bodyname { display: flex; align-items: center; gap: 9px; font-weight: 600; }
+  .bodyname .sym { font-size: 1.05rem; width: 1.3em; text-align: center; }
+  .sub { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 4px; }
+  td.below-txt, .below-txt { color: var(--muted); }
+  footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <header>
+      <div class="place"><span class="flag">🇫🇷</span> Nice, France</div>
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="date" id="date">—</div>
+      <div class="tz" id="tz">—</div>
+    </header>
+
+    <div class="sky" id="sky">
+      <div class="horizon"></div>
+      <div class="sky-labels"><span>N</span><span>E</span><span>S</span><span>W</span><span>N</span></div>
+    </div>
+
+    <table class="bodies">
+      <thead>
+        <tr>
+          <th>Body</th>
+          <th>Azimuth</th>
+          <th>Elevation</th>
+          <th class="num">Rise</th>
+          <th class="num">Set</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <footer>Computed in-browser · NOAA solar + Schlyter lunar &amp; planetary algorithms</footer>
+  </div>
+
+<script>
+"use strict";
+
+// --- Location: Nice, France ---
+const LAT = 43.680762;
+const LON = 7.21231;
+const TZ = "Europe/Paris";
+
+// --- Degree-based trig helpers ---
+const RAD = Math.PI / 180, DEG = 180 / Math.PI;
+const sind = x => Math.sin(x * RAD);
+const cosd = x => Math.cos(x * RAD);
+const tand = x => Math.tan(x * RAD);
+const asind = x => Math.asin(Math.max(-1, Math.min(1, x))) * DEG;
+const acosd = x => Math.acos(Math.max(-1, Math.min(1, x))) * DEG;
+const atan2d = (y, x) => Math.atan2(y, x) * DEG;
+const rev = x => ((x % 360) + 360) % 360;
+
+// --- Sun: NOAA solar position algorithm ---
+function solarPosition(date, lat, lon) {
+  let Y = date.getUTCFullYear();
+  let M = date.getUTCMonth() + 1;
+  const D = date.getUTCDate();
+  const H = date.getUTCHours(), Min = date.getUTCMinutes(), S = date.getUTCSeconds();
+  if (M <= 2) { Y -= 1; M += 12; }
+  const A = Math.floor(Y / 100);
+  const B = 2 - A + Math.floor(A / 4);
+  const dayFrac = (H + Min / 60 + S / 3600) / 24;
+  const jd = Math.floor(365.25 * (Y + 4716)) + Math.floor(30.6001 * (M + 1)) + D + B - 1524.5 + dayFrac;
+  const t = (jd - 2451545.0) / 36525.0;
+
+  const L0 = rev(280.46646 + t * (36000.76983 + t * 0.0003032));
+  const Ma = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+  const C = sind(Ma) * (1.914602 - t * (0.004817 + 0.000014 * t))
+          + sind(2 * Ma) * (0.019993 - 0.000101 * t)
+          + sind(3 * Ma) * 0.000289;
+  const trueLong = L0 + C;
+  const omega = 125.04 - 1934.136 * t;
+  const appLong = trueLong - 0.00569 - 0.00478 * sind(omega);
+  const seconds = 21.448 - t * (46.8150 + t * (0.00059 - t * 0.001813));
+  const eps0 = 23 + (26 + seconds / 60) / 60;
+  const eps = eps0 + 0.00256 * cosd(omega);
+  const decl = asind(sind(eps) * sind(appLong));
+
+  const varY = tand(eps / 2) ** 2;
+  const ecc = 0.016708634;
+  const eot = 4 * DEG * (varY * Math.sin(2 * L0 * RAD)
+    - 2 * ecc * Math.sin(Ma * RAD)
+    + 4 * ecc * varY * Math.sin(Ma * RAD) * Math.cos(2 * L0 * RAD)
+    - 0.5 * varY * varY * Math.sin(4 * L0 * RAD)
+    - 1.25 * ecc * ecc * Math.sin(2 * Ma * RAD));
+
+  const minutes = H * 60 + Min + S / 60;
+  let trueSolar = (minutes + eot + 4 * lon) % 1440;
+  let ha = trueSolar / 4 - 180;
+  if (ha < -180) ha += 360;
+
+  const zenith = acosd(sind(lat) * sind(decl) + cosd(lat) * cosd(decl) * cosd(ha));
+  const elevation = 90 - zenith;
+
+  let azimuth = 0;
+  if (Math.abs(sind(zenith)) >= 1e-9) {
+    const cosAz = (sind(lat) * cosd(zenith) - sind(decl)) / (cosd(lat) * sind(zenith));
+    azimuth = acosd(cosAz);
+    azimuth = ha > 0 ? rev(azimuth + 180) : rev(540 - azimuth);
+  }
+  return { az: azimuth, el: elevation };
+}
+
+// --- Moon: Schlyter's lunar theory with main perturbations + parallax ---
+function moonPosition(date, lat, lon) {
+  const Y = date.getUTCFullYear(), M = date.getUTCMonth() + 1, D = date.getUTCDate();
+  const ut = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  const d = 367 * Y - Math.floor(7 * (Y + Math.floor((M + 9) / 12)) / 4)
+          + Math.floor(275 * M / 9) + D - 730530 + ut / 24;
+  const ecl = 23.4393 - 3.563e-7 * d;
+
+  const N = rev(125.1228 - 0.0529538083 * d);
+  const incl = 5.1454;
+  const w = rev(318.0634 + 0.1643573223 * d);
+  const a = 60.2666, e = 0.054900;
+  const Mm = rev(115.3654 + 13.0649929509 * d);
+  const Ms = rev(356.0470 + 0.9856002585 * d);
+  const ws = rev(282.9404 + 4.70935e-5 * d);
+  const Ls = rev(Ms + ws);
+
+  let E = Mm + DEG * e * sind(Mm) * (1 + e * cosd(Mm));
+  for (let k = 0; k < 10; k++) {
+    const dE = (E - DEG * e * sind(E) - Mm) / (1 - e * cosd(E));
+    E -= dE;
+    if (Math.abs(dE) < 1e-6) break;
+  }
+
+  const xv = a * (cosd(E) - e);
+  const yv = a * Math.sqrt(1 - e * e) * sind(E);
+  let r = Math.hypot(xv, yv);
+  const v = rev(atan2d(yv, xv));
+
+  const xe = r * (cosd(N) * cosd(v + w) - sind(N) * sind(v + w) * cosd(incl));
+  const ye = r * (sind(N) * cosd(v + w) + cosd(N) * sind(v + w) * cosd(incl));
+  const ze = r * sind(v + w) * sind(incl);
+  let lonEcl = rev(atan2d(ye, xe));
+  let latEcl = atan2d(ze, Math.hypot(xe, ye));
+
+  const Lm = rev(N + w + Mm);
+  const elong = rev(Lm - Ls);
+  const F = rev(Lm - N);
+
+  lonEcl += -1.274 * sind(Mm - 2 * elong)
+          + 0.658 * sind(2 * elong)
+          - 0.186 * sind(Ms)
+          - 0.059 * sind(2 * Mm - 2 * elong)
+          - 0.057 * sind(Mm - 2 * elong + Ms)
+          + 0.053 * sind(Mm + 2 * elong)
+          + 0.046 * sind(2 * elong - Ms)
+          + 0.041 * sind(Mm - Ms)
+          - 0.035 * sind(elong)
+          - 0.031 * sind(Mm + Ms)
+          - 0.015 * sind(2 * F - 2 * elong)
+          + 0.011 * sind(Mm - 4 * elong);
+  latEcl += -0.173 * sind(F - 2 * elong)
+          - 0.055 * sind(Mm - F - 2 * elong)
+          - 0.046 * sind(Mm + F - 2 * elong)
+          + 0.033 * sind(F + 2 * elong)
+          + 0.017 * sind(2 * Mm + F);
+  r += -0.58 * cosd(Mm - 2 * elong) - 0.46 * cosd(2 * elong);
+
+  const xg = r * cosd(lonEcl) * cosd(latEcl);
+  const yg = r * sind(lonEcl) * cosd(latEcl);
+  const zg = r * sind(latEcl);
+  const xeq = xg;
+  const yeq = yg * cosd(ecl) - zg * sind(ecl);
+  const zeq = yg * sind(ecl) + zg * cosd(ecl);
+
+  const ra = rev(atan2d(yeq, xeq));
+  const dec = atan2d(zeq, Math.hypot(xeq, yeq));
+
+  const gmst0 = rev(Ls + 180);
+  const lst = rev(gmst0 + ut * 15 + lon);
+  let ha = rev(lst - ra);
+  if (ha > 180) ha -= 360;
+
+  const xc = cosd(ha) * cosd(dec), yc = sind(ha) * cosd(dec), zc = sind(dec);
+  const xhor = xc * sind(lat) - zc * cosd(lat);
+  const yhor = yc;
+  const zhor = xc * cosd(lat) + zc * sind(lat);
+
+  const az = rev(atan2d(yhor, xhor) + 180);
+  let alt = asind(zhor);
+  const parallax = asind(1 / r);
+  alt -= parallax * cosd(alt);
+
+  return { az, el: alt };
+}
+
+// --- Planets: Schlyter's heliocentric elements -> geocentric -> horizontal ---
+function kepler(mDeg, e) {
+  const m = mDeg * RAD;
+  let ea = mDeg + DEG * e * Math.sin(m) * (1 + e * Math.cos(m));
+  for (let k = 0; k < 12; k++) {
+    const er = ea * RAD;
+    const d = (ea - DEG * e * Math.sin(er) - mDeg) / (1 - e * Math.cos(er));
+    ea -= d;
+    if (Math.abs(d) < 1e-7) break;
+  }
+  return ea;
+}
+
+function heliocentric(N, incl, w, a, e, M) {
+  const er = kepler(M, e) * RAD;
+  const xv = a * (Math.cos(er) - e);
+  const yv = a * Math.sqrt(1 - e * e) * Math.sin(er);
+  const r = Math.hypot(xv, yv);
+  const v = atan2d(yv, xv);
+  const xh = r * (cosd(N) * cosd(v + w) - sind(N) * sind(v + w) * cosd(incl));
+  const yh = r * (sind(N) * cosd(v + w) + cosd(N) * sind(v + w) * cosd(incl));
+  const zh = r * sind(v + w) * sind(incl);
+  return { lon: rev(atan2d(yh, xh)), lat: atan2d(zh, Math.hypot(xh, yh)), r };
+}
+
+function sunRect(d) {
+  const w = 282.9404 + 4.70935e-5 * d;
+  const e = 0.016709 - 1.151e-9 * d;
+  const M = rev(356.0470 + 0.9856002585 * d);
+  const er = kepler(M, e) * RAD;
+  const xv = Math.cos(er) - e;
+  const yv = Math.sqrt(1 - e * e) * Math.sin(er);
+  const r = Math.hypot(xv, yv);
+  const lonsun = rev(atan2d(yv, xv) + w);
+  return { xs: r * cosd(lonsun), ys: r * sind(lonsun) };
+}
+
+function localSidereal(d, ut, lon) {
+  const ls = rev((356.0470 + 0.9856002585 * d) + (282.9404 + 4.70935e-5 * d));
+  return rev(rev(ls + 180) + ut * 15 + lon);
+}
+
+function toHorizontal(ra, dec, lst, lat) {
+  let ha = rev(lst - ra);
+  if (ha > 180) ha -= 360;
+  const xc = cosd(ha) * cosd(dec), yc = sind(ha) * cosd(dec), zc = sind(dec);
+  const xhor = xc * sind(lat) - zc * cosd(lat);
+  const yhor = yc;
+  const zhor = xc * cosd(lat) + zc * sind(lat);
+  return { az: rev(atan2d(yhor, xhor) + 180), el: asind(zhor) };
+}
+
+// Orbital elements as functions of day number d (Schlyter).
+const PLANET_ELEMENTS = {
+  Venus:   d => [rev(76.6799 + 2.46590e-5 * d), 3.3946 + 2.75e-8 * d,
+                 rev(54.8910 + 1.38374e-5 * d), 0.723330,
+                 0.006773 - 1.302e-9 * d, rev(48.0052 + 1.6021302244 * d)],
+  Mars:    d => [rev(49.5574 + 2.11081e-5 * d), 1.8497 - 1.78e-8 * d,
+                 rev(286.5016 + 2.92961e-5 * d), 1.523688,
+                 0.093405 + 2.516e-9 * d, rev(18.6021 + 0.5240207766 * d)],
+  Jupiter: d => [rev(100.4542 + 2.76854e-5 * d), 1.3030 - 1.557e-7 * d,
+                 rev(273.8777 + 1.64505e-5 * d), 5.20256,
+                 0.048498 + 4.469e-9 * d, rev(19.8950 + 0.0830853001 * d)],
+  Saturn:  d => [rev(113.6634 + 2.38980e-5 * d), 2.4886 - 1.081e-7 * d,
+                 rev(339.3939 + 2.97661e-5 * d), 9.55475,
+                 0.055546 - 9.499e-9 * d, rev(316.9670 + 0.0334442282 * d)],
+};
+
+function planetPosition(date, lat, lon, planet) {
+  const Y = date.getUTCFullYear(), M = date.getUTCMonth() + 1, D = date.getUTCDate();
+  const ut = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  const d = 367 * Y - Math.floor(7 * (Y + Math.floor((M + 9) / 12)) / 4)
+          + Math.floor(275 * M / 9) + D - 730530 + ut / 24;
+  const ecl = 23.4393 - 3.563e-7 * d;
+
+  let { lon: plon, lat: plat, r } = heliocentric(...PLANET_ELEMENTS[planet](d));
+
+  // Main Jupiter/Saturn mutual perturbations (degrees).
+  if (planet === "Jupiter" || planet === "Saturn") {
+    const mj = rev(19.8950 + 0.0830853001 * d);
+    const ms = rev(316.9670 + 0.0334442282 * d);
+    if (planet === "Jupiter") {
+      plon += -0.332 * sind(2 * mj - 5 * ms - 67.6)
+            - 0.056 * sind(2 * mj - 2 * ms + 21)
+            + 0.042 * sind(3 * mj - 5 * ms + 21)
+            - 0.036 * sind(mj - 2 * ms)
+            + 0.022 * cosd(mj - ms)
+            + 0.023 * sind(2 * mj - 3 * ms + 52)
+            - 0.016 * sind(mj - 5 * ms - 69);
+    } else {
+      plon += 0.812 * sind(2 * mj - 5 * ms - 67.6)
+            - 0.229 * cosd(2 * mj - 4 * ms - 2)
+            + 0.119 * sind(mj - 2 * ms - 3)
+            + 0.046 * sind(2 * mj - 6 * ms - 69)
+            + 0.014 * sind(mj - 3 * ms + 32);
+      plat += -0.020 * cosd(2 * mj - 4 * ms - 2)
+            + 0.018 * sind(2 * mj - 6 * ms - 49);
+    }
+  }
+
+  const xh = r * cosd(plon) * cosd(plat);
+  const yh = r * sind(plon) * cosd(plat);
+  const zh = r * sind(plat);
+  const { xs, ys } = sunRect(d);
+  const xg = xh + xs, yg = yh + ys, zg = zh;
+  const xeq = xg;
+  const yeq = yg * cosd(ecl) - zg * sind(ecl);
+  const zeq = yg * sind(ecl) + zg * cosd(ecl);
+  const ra = rev(atan2d(yeq, xeq));
+  const dec = atan2d(zeq, Math.hypot(xeq, yeq));
+  return toHorizontal(ra, dec, localSidereal(d, ut, lon), lat);
+}
+
+// --- 16-point compass direction ---
+function compass(az) {
+  const pts = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+               "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  return pts[Math.round(az / 22.5) % 16];
+}
+
+// --- Rise/set: scan elevation across the day, refine crossings by bisection ---
+function riseSet(posFn, dayStart, h0 = -0.833) {
+  const start = dayStart.getTime();
+  const end = start + 24 * 3600 * 1000;
+  const step = 10 * 60 * 1000;
+  let rise = null, set = null;
+  let prev = posFn(new Date(start)).el - h0;
+  for (let t = start; t < end; t += step) {
+    const t2 = Math.min(t + step, end);
+    const cur = posFn(new Date(t2)).el - h0;
+    if ((prev < 0) !== (cur < 0)) {
+      let lo = t, hi = t2, loVal = prev;
+      while (hi - lo > 1000) {
+        const mid = (lo + hi) / 2;
+        const midVal = posFn(new Date(mid)).el - h0;
+        if ((loVal < 0) !== (midVal < 0)) hi = mid;
+        else { lo = mid; loVal = midVal; }
+      }
+      const crossing = new Date((lo + hi) / 2);
+      if (cur > prev && !rise) rise = crossing;
+      else if (cur < prev && !set) set = crossing;
+    }
+    prev = cur;
+  }
+  return { rise, set };
+}
+
+// --- Timezone helpers: work in Paris local time regardless of viewer ---
+function tzOffsetMs(date, tz) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false, year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+  const map = {};
+  for (const p of dtf.formatToParts(date)) if (p.type !== "literal") map[p.type] = parseInt(p.value, 10);
+  const asUTC = Date.UTC(map.year, map.month - 1, map.day, map.hour % 24, map.minute, map.second);
+  return asUTC - date.getTime();
+}
+
+function localMidnight(now, tz) {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(now).split("-").map(Number);
+  const noon = new Date(Date.UTC(y, m - 1, d, 12));
+  const off = tzOffsetMs(noon, tz);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - off);
+}
+
+const fmtTime = d => d ? new Intl.DateTimeFormat("fr-FR", {
+  timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false
+}).format(d) : "—";
+
+// --- Bodies: name, sky symbol, position fn (Paris coords baked in), horizon h0 ---
+const BODIES = [
+  { name: "Sun",     sym: "☀️", fn: d => solarPosition(d, LAT, LON),            h0: -0.833 },
+  { name: "Moon",    sym: "🌙", fn: d => moonPosition(d, LAT, LON),             h0: -0.833 },
+  { name: "Venus",   sym: "♀",  fn: d => planetPosition(d, LAT, LON, "Venus"),  h0: -0.566 },
+  { name: "Jupiter", sym: "♃",  fn: d => planetPosition(d, LAT, LON, "Jupiter"),h0: -0.566 },
+  { name: "Saturn",  sym: "♄",  fn: d => planetPosition(d, LAT, LON, "Saturn"), h0: -0.566 },
+  { name: "Mars",    sym: "♂",  fn: d => planetPosition(d, LAT, LON, "Mars"),   h0: -0.566 },
+];
+
+// Create one sky marker per body, reused across ticks (so they animate).
+const skyEl = document.getElementById("sky");
+const markers = {};
+for (const b of BODIES) {
+  const m = document.createElement("div");
+  m.className = "body";
+  m.textContent = b.sym;
+  m.title = b.name;
+  skyEl.appendChild(m);
+  markers[b.name] = m;
+}
+
+function placeMarker(el, pos) {
+  const x = (pos.az / 360) * 100;
+  const elClamp = Math.max(-6, Math.min(90, pos.el));
+  const y = 26 + (elClamp / 90) * 105;   // 26px = horizon line
+  el.style.left = x + "%";
+  el.style.bottom = y + "px";
+  el.classList.toggle("below", pos.el <= 0);
+}
+
+// --- Day/night background based on sun elevation ---
+function updateSky(sunEl) {
+  const r = document.documentElement.style;
+  if (sunEl > 3)        { r.setProperty("--bg-top", "#4a90d9"); r.setProperty("--bg-bottom", "#1a5fb4"); }
+  else if (sunEl > -1)  { r.setProperty("--bg-top", "#e8856b"); r.setProperty("--bg-bottom", "#8a4a6a"); }
+  else if (sunEl > -6)  { r.setProperty("--bg-top", "#3a4a7a"); r.setProperty("--bg-bottom", "#1a2a4a"); }
+  else                  { r.setProperty("--bg-top", "#1a2a4a"); r.setProperty("--bg-bottom", "#0a1428"); }
+}
+
+function tick() {
+  const now = new Date();
+  const midnight = localMidnight(now, TZ);
+
+  document.getElementById("clock").textContent = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  }).format(now);
+  document.getElementById("date").textContent = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric"
+  }).format(now);
+  const off = tzOffsetMs(now, TZ) / 3600000;
+  const sign = off >= 0 ? "+" : "−";
+  document.getElementById("tz").textContent =
+    `${LAT.toFixed(4)}°N, ${LON.toFixed(4)}°E · UTC${sign}${String(Math.abs(off)).padStart(2, "0")}`;
+
+  let sunEl = 0;
+  let rowsHtml = "";
+  for (const b of BODIES) {
+    const pos = b.fn(now);
+    const rs = riseSet(b.fn, midnight, b.h0);
+    if (b.name === "Sun") sunEl = pos.el;
+    const up = pos.el > 0;
+    rowsHtml += `<tr>
+      <td><span class="bodyname"><span class="sym">${b.sym}</span>${b.name}</span></td>
+      <td>${pos.az.toFixed(1)}°<span class="sub">${compass(pos.az)}</span></td>
+      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub">${up ? "up" : "down"}</span></td>
+      <td class="num">${fmtTime(rs.rise)}</td>
+      <td class="num">${fmtTime(rs.set)}</td>
+    </tr>`;
+    placeMarker(markers[b.name], pos);
+  }
+  document.getElementById("rows").innerHTML = rowsHtml;
+  updateSky(sunEl);
+}
+
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
