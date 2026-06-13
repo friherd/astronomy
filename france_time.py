@@ -13,6 +13,11 @@ PARIS = ZoneInfo("Europe/Paris")
 LATITUDE = 43.680762
 LONGITUDE = 7.21231
 
+# Observation window: a body counts as "in window" when its azimuth and
+# elevation both fall inside these (inclusive) ranges, in degrees.
+AZIMUTH_WINDOW = (200.0, 260.0)
+ELEVATION_WINDOW = (0.0, 16.0)
+
 # French names so the output reads naturally.
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MOIS = [
@@ -423,6 +428,13 @@ def fmt_time(dt: Optional[datetime]) -> str:
     return dt.strftime("%H:%M") if dt else "—"
 
 
+def in_window(az: float, el: float) -> bool:
+    """True when azimuth and elevation both fall inside the observation window."""
+    az_lo, az_hi = AZIMUTH_WINDOW
+    el_lo, el_hi = ELEVATION_WINDOW
+    return az_lo <= az <= az_hi and el_lo <= el <= el_hi
+
+
 def main() -> None:
     now = datetime.now(PARIS)
 
@@ -445,22 +457,29 @@ def main() -> None:
         ("Mars", lambda t, la, lo: planet_position(t, la, lo, "Mars"), -0.566),
     ]
 
+    az_lo, az_hi = AZIMUTH_WINDOW
+    el_lo, el_hi = ELEVATION_WINDOW
+    window_str = f"az {az_lo:.0f}–{az_hi:.0f}°, el {el_lo:.0f}–{el_hi:.0f}°"
+
     print()
     print("  🇫🇷  France — Nice (Europe/Paris)")
-    print("  " + "─" * 54)
+    print("  " + "─" * 62)
     print(f"  📅  {date_str}")
     print(f"  🕐  {heure_str}    🌍  {tz_str}")
+    print(f"  🪟  Window: {window_str}")
     print()
-    print(f"  {'Body':<9}{'Azimuth':<13}{'Elevation':<13}{'Rise':>6}{'Set':>8}")
-    print("  " + "─" * 54)
+    print(f"  {'Body':<9}{'Azimuth':<13}{'Elevation':<13}"
+          f"{'Rise':>6}{'Set':>8}{'Window':>10}")
+    print("  " + "─" * 62)
     for name, fn, h0 in bodies:
         az, el = fn(now, LATITUDE, LONGITUDE)
         rise, setting = rise_set(fn, now, LATITUDE, LONGITUDE, h0)
         az_field = f"{az:5.1f}° {compass(az)}"
         mark = "↑ up" if el > 0 else "↓ down"
         el_field = f"{el:5.1f}° {mark}"
+        window_field = "✓ IN" if in_window(az, el) else "·"
         print(f"  {name:<9}{az_field:<13}{el_field:<13}"
-              f"{fmt_time(rise):>6}{fmt_time(setting):>8}")
+              f"{fmt_time(rise):>6}{fmt_time(setting):>8}{window_field:>10}")
     print()
 
 
