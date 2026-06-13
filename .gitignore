@@ -1,5 +1,7 @@
-# Claude Code local settings (machine-specific)
+# Claude Code local settings and dev-preview tooling (machine-specific)
 .claude/settings.local.json
+.claude/launch.json
+.claude/preview-server.js
 
 # Python
 __pycache__/

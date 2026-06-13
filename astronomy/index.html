@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a1428">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sky">
 <title>Nice, France — Sky</title>
 <style>
   :root {
@@ -103,6 +108,41 @@
   .passrow .pdur { color: var(--muted); font-size: 0.8rem; }
   .passrow.none { color: var(--muted); opacity: 0.55; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
+
+  /* Horizontal-scroll fallback so the 6-column table never breaks the layout. */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* --- Phone layout --- */
+  @media (max-width: 480px) {
+    body {
+      padding: 12px;
+      /* keep clear of the notch / home indicator when added to Home Screen */
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+               max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      align-items: flex-start;
+    }
+    .card { padding: 18px 16px; border-radius: 18px; }
+    .place { font-size: 0.95rem; }
+    .clock { font-size: 2.6rem; }
+    .date { font-size: 0.92rem; }
+    .tz, .win { font-size: 0.72rem; }
+    .sky { height: 120px; margin: 18px 0 6px; }
+
+    table.bodies { font-size: 0.76rem; }
+    table.bodies th { font-size: 0.6rem; letter-spacing: 0.2px; padding: 0 4px 8px; white-space: nowrap; }
+    table.bodies td { padding: 8px 4px; white-space: nowrap; }
+    .bodyname { gap: 6px; }
+    .bodyname .sym { font-size: 0.95rem; }
+    .sub { margin-left: 3px; font-size: 0.72rem; }
+    .el-state { display: none; }   /* "up"/"down" redundant on narrow screens */
+    /* Drop the live Window column; the passes panel + sky glow cover it. */
+    table.bodies th:nth-child(6), table.bodies td:nth-child(6) { display: none; }
+    .badge-in { padding: 1px 6px; font-size: 0.72rem; }
+
+    .passes h3 { font-size: 0.64rem; }
+    .passrow { gap: 7px; padding: 5px 4px; font-size: 0.8rem; flex-wrap: wrap; }
+    .passrow .pname { width: 88px; gap: 7px; }
+  }
 </style>
 </head>
 <body>
@@ -121,19 +161,21 @@
       <div class="sky-labels"><span>N</span><span>E</span><span>S</span><span>W</span><span>N</span></div>
     </div>
 
-    <table class="bodies">
-      <thead>
-        <tr>
-          <th>Body</th>
-          <th>Azimuth</th>
-          <th>Elevation</th>
-          <th class="num">Rise</th>
-          <th class="num">Set</th>
-          <th class="num">Window</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table class="bodies">
+        <thead>
+          <tr>
+            <th>Body</th>
+            <th>Azimuth</th>
+            <th>Elevation</th>
+            <th class="num">Rise</th>
+            <th class="num">Set</th>
+            <th class="num">Window</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
 
     <div class="passes" id="passes"></div>
 
@@ -617,7 +659,7 @@ function tick() {
     rowsHtml += `<tr>
       <td><span class="bodyname"><span class="sym">${b.sym}</span>${b.name}</span></td>
       <td>${pos.az.toFixed(1)}°<span class="sub">${compass(pos.az)}</span></td>
-      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub">${up ? "up" : "down"}</span></td>
+      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub el-state">${up ? "up" : "down"}</span></td>
       <td class="num">${fmtTime(rs.rise)}</td>
       <td class="num">${fmtTime(rs.set)}</td>
       <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
