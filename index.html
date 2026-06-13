@@ -526,8 +526,11 @@ function tick() {
   }).format(now);
   const off = tzOffsetMs(now, TZ) / 3600000;
   const sign = off >= 0 ? "+" : "−";
+  const utcTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  }).format(now);
   document.getElementById("tz").textContent =
-    `${LAT.toFixed(4)}°N, ${LON.toFixed(4)}°E · UTC${sign}${String(Math.abs(off)).padStart(2, "0")}`;
+    `${LAT.toFixed(4)}°N, ${LON.toFixed(4)}°E · ${utcTime} UTC`;
   document.getElementById("win").textContent =
     `🪟 Window: az ${AZIMUTH_WINDOW[0]}–${AZIMUTH_WINDOW[1]}°, el ${ELEVATION_WINDOW[0]}–${ELEVATION_WINDOW[1]}°`;
 
