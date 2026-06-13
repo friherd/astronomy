@@ -18,6 +18,10 @@ LONGITUDE = 7.21231
 AZIMUTH_WINDOW = (200.0, 260.0)
 ELEVATION_WINDOW = (0.0, 16.0)
 
+# How far ahead to look for the next window pass, and the coarse scan step.
+WINDOW_HORIZON = timedelta(days=7)
+WINDOW_STEP = timedelta(minutes=3)
+
 # French names so the output reads naturally.
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MOIS = [
@@ -435,6 +439,79 @@ def in_window(az: float, el: float) -> bool:
     return az_lo <= az <= az_hi and el_lo <= el <= el_hi
 
 
+def _in_window_at(fn: PositionFn, t: datetime, lat: float, lon: float) -> bool:
+    az, el = fn(t, lat, lon)
+    return in_window(az, el)
+
+
+def _window_edge(fn: PositionFn, a: datetime, b: datetime, lat: float, lon: float) -> datetime:
+    """Refine the in/out transition bracketed by times a and b to ~1 second."""
+    inside_a = _in_window_at(fn, a, lat, lon)
+    while (b - a).total_seconds() > 1:
+        mid = a + (b - a) / 2
+        if _in_window_at(fn, mid, lat, lon) == inside_a:
+            a = mid
+        else:
+            b = mid
+    return a + (b - a) / 2
+
+
+def next_window_pass(fn: PositionFn, start: datetime, lat: float, lon: float):
+    """Next interval the body spends inside the window, searching forward up to
+    WINDOW_HORIZON. Returns (entry, exit); entry may precede ``start`` when the
+    body is already inside. (None, None) if there is no pass within the horizon.
+    """
+    end = start + WINDOW_HORIZON
+
+    if _in_window_at(fn, start, lat, lon):
+        # Already inside: walk back (capped at a day) for the true entry.
+        entry = start
+        back_cap = start - timedelta(days=1)
+        tb = start
+        while tb > back_cap:
+            tb_prev, tb = tb, tb - WINDOW_STEP
+            if not _in_window_at(fn, tb, lat, lon):
+                entry = _window_edge(fn, tb, tb_prev, lat, lon)
+                break
+        tf = start
+        while tf < end:
+            tf_prev, tf = tf, tf + WINDOW_STEP
+            if not _in_window_at(fn, tf, lat, lon):
+                return entry, _window_edge(fn, tf_prev, tf, lat, lon)
+        return entry, None
+
+    # Not inside: scan forward for the entry, then the following exit.
+    t = start
+    while t < end:
+        t_prev, t = t, t + WINDOW_STEP
+        if _in_window_at(fn, t, lat, lon):
+            entry = _window_edge(fn, t_prev, t, lat, lon)
+            t2 = entry
+            while t2 < end:
+                t2_prev, t2 = t2, t2 + WINDOW_STEP
+                if not _in_window_at(fn, t2, lat, lon):
+                    return entry, _window_edge(fn, t2_prev, t2, lat, lon)
+            return entry, None
+    return None, None
+
+
+def fmt_pass(entry: Optional[datetime], exit_: Optional[datetime], now: datetime) -> str:
+    """Human-readable next-pass description, e.g. '13:39 → 13:50  (11 min)'."""
+    if entry is None:
+        return "—  (none in 7 days)"
+
+    def stamp(dt: datetime) -> str:
+        local = dt.astimezone(PARIS)
+        if local.date() == now.astimezone(PARIS).date():
+            return local.strftime("%H:%M")
+        return local.strftime("%a %d %H:%M")
+
+    if exit_ is None:
+        return f"{stamp(entry)} → (ongoing)"
+    mins = round((exit_ - entry).total_seconds() / 60)
+    return f"{stamp(entry)} → {stamp(exit_)}  ({mins} min)"
+
+
 def main() -> None:
     now = datetime.now(PARIS)
 
@@ -480,6 +557,12 @@ def main() -> None:
         window_field = "✓ IN" if in_window(az, el) else "·"
         print(f"  {name:<9}{az_field:<13}{el_field:<13}"
               f"{fmt_time(rise):>6}{fmt_time(setting):>8}{window_field:>10}")
+    print()
+
+    print(f"  Next window pass (within {WINDOW_HORIZON.days} days):")
+    for name, fn, _ in bodies:
+        entry, exit_ = next_window_pass(fn, now, LATITUDE, LONGITUDE)
+        print(f"    {name:<9}{fmt_pass(entry, exit_, now)}")
     print()
 
 
