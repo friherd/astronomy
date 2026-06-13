@@ -42,6 +42,7 @@
   .clock { font-size: 3.4rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
   .date { font-size: 1.05rem; color: var(--muted); text-transform: capitalize; }
   .tz { font-size: 0.8rem; color: var(--muted); margin-top: 4px; opacity: 0.8; }
+  .win { font-size: 0.8rem; color: var(--accent); margin-top: 2px; opacity: 0.9; }
 
   .sky {
     position: relative;
@@ -53,6 +54,12 @@
     overflow: hidden;
   }
   .horizon { position: absolute; left: 0; right: 0; bottom: 26px; height: 1px; background: rgba(255,255,255,0.25); }
+  .window-zone {
+    position: absolute;
+    background: rgba(255, 212, 121, 0.16);
+    border: 1px solid rgba(255, 212, 121, 0.5);
+    border-radius: 3px;
+  }
   .sky-labels { position: absolute; left: 0; right: 0; bottom: 6px; display: flex; justify-content: space-between; padding: 0 10px; font-size: 0.7rem; color: var(--muted); }
   .body {
     position: absolute; transform: translate(-50%, 50%);
@@ -62,6 +69,7 @@
     pointer-events: none;
   }
   .body.below { opacity: 0.25; filter: grayscale(0.7); }
+  .body.in-window { filter: drop-shadow(0 0 9px rgba(255,212,121,0.95)); }
 
   table.bodies { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 0.9rem; }
   table.bodies th {
@@ -76,6 +84,12 @@
   .bodyname .sym { font-size: 1.05rem; width: 1.3em; text-align: center; }
   .sub { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 4px; }
   td.below-txt, .below-txt { color: var(--muted); }
+  .badge-in {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    background: rgba(255, 212, 121, 0.18); border: 1px solid rgba(255, 212, 121, 0.5);
+    color: var(--accent); font-size: 0.78rem; font-weight: 600;
+  }
+  .badge-out { color: var(--muted); opacity: 0.5; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
 </style>
 </head>
@@ -86,9 +100,11 @@
       <div class="clock" id="clock">--:--:--</div>
       <div class="date" id="date">—</div>
       <div class="tz" id="tz">—</div>
+      <div class="win" id="win">—</div>
     </header>
 
     <div class="sky" id="sky">
+      <div class="window-zone" id="windowZone"></div>
       <div class="horizon"></div>
       <div class="sky-labels"><span>N</span><span>E</span><span>S</span><span>W</span><span>N</span></div>
     </div>
@@ -101,6 +117,7 @@
           <th>Elevation</th>
           <th class="num">Rise</th>
           <th class="num">Set</th>
+          <th class="num">Window</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -116,6 +133,14 @@
 const LAT = 43.680762;
 const LON = 7.21231;
 const TZ = "Europe/Paris";
+
+// --- Observation window: a body is "in window" when azimuth AND elevation
+//     both fall inside these (inclusive) ranges, in degrees. ---
+const AZIMUTH_WINDOW = [200, 260];
+const ELEVATION_WINDOW = [0, 16];
+const inWindow = (az, el) =>
+  az >= AZIMUTH_WINDOW[0] && az <= AZIMUTH_WINDOW[1] &&
+  el >= ELEVATION_WINDOW[0] && el <= ELEVATION_WINDOW[1];
 
 // --- Degree-based trig helpers ---
 const RAD = Math.PI / 180, DEG = 180 / Math.PI;
@@ -458,6 +483,19 @@ for (const b of BODIES) {
   markers[b.name] = m;
 }
 
+// Shade the observation window in the sky strip (azimuth across, elevation up).
+(function positionWindowZone() {
+  const z = document.getElementById("windowZone");
+  const left = (AZIMUTH_WINDOW[0] / 360) * 100;
+  const right = (AZIMUTH_WINDOW[1] / 360) * 100;
+  const yLo = 26 + (Math.max(0, ELEVATION_WINDOW[0]) / 90) * 105;
+  const yHi = 26 + (Math.min(90, ELEVATION_WINDOW[1]) / 90) * 105;
+  z.style.left = left + "%";
+  z.style.width = (right - left) + "%";
+  z.style.bottom = yLo + "px";
+  z.style.height = (yHi - yLo) + "px";
+})();
+
 function placeMarker(el, pos) {
   const x = (pos.az / 360) * 100;
   const elClamp = Math.max(-6, Math.min(90, pos.el));
@@ -490,6 +528,8 @@ function tick() {
   const sign = off >= 0 ? "+" : "−";
   document.getElementById("tz").textContent =
     `${LAT.toFixed(4)}°N, ${LON.toFixed(4)}°E · UTC${sign}${String(Math.abs(off)).padStart(2, "0")}`;
+  document.getElementById("win").textContent =
+    `🪟 Window: az ${AZIMUTH_WINDOW[0]}–${AZIMUTH_WINDOW[1]}°, el ${ELEVATION_WINDOW[0]}–${ELEVATION_WINDOW[1]}°`;
 
   let sunEl = 0;
   let rowsHtml = "";
@@ -498,13 +538,16 @@ function tick() {
     const rs = riseSet(b.fn, midnight, b.h0);
     if (b.name === "Sun") sunEl = pos.el;
     const up = pos.el > 0;
+    const win = inWindow(pos.az, pos.el);
     rowsHtml += `<tr>
       <td><span class="bodyname"><span class="sym">${b.sym}</span>${b.name}</span></td>
       <td>${pos.az.toFixed(1)}°<span class="sub">${compass(pos.az)}</span></td>
       <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub">${up ? "up" : "down"}</span></td>
       <td class="num">${fmtTime(rs.rise)}</td>
       <td class="num">${fmtTime(rs.set)}</td>
+      <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
     </tr>`;
+    markers[b.name].classList.toggle("in-window", win);
     placeMarker(markers[b.name], pos);
   }
   document.getElementById("rows").innerHTML = rowsHtml;
