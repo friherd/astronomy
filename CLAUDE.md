@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Sun, Moon, and planet ephemeris for **Nice, France** — current date/time plus
 azimuth, elevation, rise/set, and an observation-window readout for the Sun,
 Moon, Venus, Jupiter, Saturn, and Mars.
@@ -28,6 +30,8 @@ project — don't change one without the other.
 
 - **CLI:** `python3 astronomy/france_time.py` (no dependencies — standard library only).
 - **Web:** open `astronomy/index.html` in a browser (no server, no build, no dependencies).
+- **Web over a server** (needed for a secure context — e.g. geolocation — or to
+  reach the page from a phone on the LAN): `python3 -m http.server --directory astronomy`.
 
 Both are intentionally **dependency-free**. Keep them that way.
 
