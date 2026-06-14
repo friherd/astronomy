@@ -10,13 +10,19 @@ Moon, Venus, Jupiter, Saturn, and Mars.
 
 ```
 astronomy/
-  france_time.py   # CLI program (terminal table output)
-  index.html       # self-contained browser app (same data, live-updating)
+  france_time.py        # CLI program (terminal table output)
+  index.html            # self-contained browser app (same data, live-updating)
+  manifest.webmanifest  # PWA manifest (name, icons, standalone display)
+  sw.js                 # service worker — caches shell for offline use
+  icon-180/192/512.png  # app icons (generated via Python stdlib)
+.github/workflows/pages.yml  # deploys astronomy/ to GitHub Pages on push to main
 .gitignore
 CLAUDE.md
 ```
 
-The repo root holds git config; all source lives in `astronomy/`.
+The repo root holds git config; all source lives in `astronomy/`. The web app
+is deployed at **https://friherd.github.io/astronomy/** and auto-deploys on
+every push to `main`.
 
 ## Two deliverables that MUST stay in sync
 
@@ -55,6 +61,10 @@ Both are intentionally **dependency-free**. Keep them that way.
 Angles: azimuth is degrees clockwise from true north; elevation is degrees above
 the horizon (negative = below). Accuracy is ~1–2 arcminutes; atmospheric
 refraction near the horizon is **not** modelled.
+
+**PWA/offline:** `sw.js` uses a network-first strategy for `index.html` (so
+deploys propagate when online) and cache-first for static assets. Cache name
+is `sky-v1` — bump it in `sw.js` whenever cached assets change.
 
 ## Conventions
 
