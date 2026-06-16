@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sun, Moon, and planet ephemeris for **Nice, France** — current date/time plus
 azimuth, elevation, rise/set, and an observation-window readout for the Sun,
-Moon, Venus, Jupiter, Saturn, and Mars.
+Moon, Mercury, Venus, Jupiter, Saturn, and Mars.
 
 ## Layout
 
@@ -48,7 +48,7 @@ Both are intentionally **dependency-free**. Keep them that way.
   topocentric parallax correction (`moon_position`).
 - **Planets:** Schlyter's heliocentric elements → geocentric via the Sun's
   position → horizontal coordinates, including the Jupiter/Saturn mutual
-  perturbations (`planet_position`, `PLANET_ELEMENTS`). Venus, Jupiter, Saturn, Mars.
+  perturbations (`planet_position`, `PLANET_ELEMENTS`). Mercury, Venus, Jupiter, Saturn, Mars.
 - **Rise/set:** generic elevation scan refined by bisection (`rise_set`); horizon
   is −0.833° for the Sun/Moon, −0.566° for planets.
 - **Observation window:** `AZIMUTH_WINDOW` (200–260°) and `ELEVATION_WINDOW`
