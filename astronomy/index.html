@@ -407,6 +407,9 @@ function toHorizontal(ra, dec, lst, lat) {
 
 // Orbital elements as functions of day number d (Schlyter).
 const PLANET_ELEMENTS = {
+  Mercury: d => [rev(48.3313 + 3.24587e-5 * d), 7.0047 + 5.00e-8 * d,
+                 rev(29.1241 + 1.01444e-5 * d), 0.387098,
+                 0.205635 + 5.59e-10 * d, rev(168.6562 + 4.0923344368 * d)],
   Venus:   d => [rev(76.6799 + 2.46590e-5 * d), 3.3946 + 2.75e-8 * d,
                  rev(54.8910 + 1.38374e-5 * d), 0.723330,
                  0.006773 - 1.302e-9 * d, rev(48.0052 + 1.6021302244 * d)],
@@ -580,9 +583,10 @@ const fmtTime = d => d ? new Intl.DateTimeFormat("fr-FR", {
 
 // --- Bodies: name, sky symbol, position fn (Paris coords baked in), horizon h0 ---
 const BODIES = [
-  { name: "Sun",     sym: "☀️", fn: d => solarPosition(d, LAT, LON),            h0: -0.833 },
-  { name: "Moon",    sym: "🌙", fn: d => moonPosition(d, LAT, LON),             h0: -0.833 },
-  { name: "Venus",   sym: "♀",  fn: d => planetPosition(d, LAT, LON, "Venus"),  h0: -0.566 },
+  { name: "Sun",     sym: "☀️", fn: d => solarPosition(d, LAT, LON),              h0: -0.833 },
+  { name: "Moon",    sym: "🌙", fn: d => moonPosition(d, LAT, LON),               h0: -0.833 },
+  { name: "Mercury", sym: "☿",  fn: d => planetPosition(d, LAT, LON, "Mercury"),  h0: -0.566 },
+  { name: "Venus",   sym: "♀",  fn: d => planetPosition(d, LAT, LON, "Venus"),    h0: -0.566 },
   { name: "Jupiter", sym: "♃",  fn: d => planetPosition(d, LAT, LON, "Jupiter"),h0: -0.566 },
   { name: "Saturn",  sym: "♄",  fn: d => planetPosition(d, LAT, LON, "Saturn"), h0: -0.566 },
   { name: "Mars",    sym: "♂",  fn: d => planetPosition(d, LAT, LON, "Mars"),   h0: -0.566 },

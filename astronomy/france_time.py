@@ -308,6 +308,9 @@ def _to_horizontal(ra: float, dec: float, lst: float, lat: float):
 
 # Orbital elements as functions of day number d (Schlyter).
 PLANET_ELEMENTS = {
+    "Mercury": lambda d: (_rev(48.3313 + 3.24587e-5 * d), 7.0047 + 5.00e-8 * d,
+                          _rev(29.1241 + 1.01444e-5 * d), 0.387098,
+                          0.205635 + 5.59e-10 * d, _rev(168.6562 + 4.0923344368 * d)),
     "Venus": lambda d: (_rev(76.6799 + 2.46590e-5 * d), 3.3946 + 2.75e-8 * d,
                         _rev(54.8910 + 1.38374e-5 * d), 0.723330,
                         0.006773 - 1.302e-9 * d, _rev(48.0052 + 1.6021302244 * d)),
@@ -528,6 +531,7 @@ def main() -> None:
     bodies = [
         ("Sun", solar_position, -0.833),
         ("Moon", moon_position, -0.833),
+        ("Mercury", lambda t, la, lo: planet_position(t, la, lo, "Mercury"), -0.566),
         ("Venus", lambda t, la, lo: planet_position(t, la, lo, "Venus"), -0.566),
         ("Jupiter", lambda t, la, lo: planet_position(t, la, lo, "Jupiter"), -0.566),
         ("Saturn", lambda t, la, lo: planet_position(t, la, lo, "Saturn"), -0.566),
