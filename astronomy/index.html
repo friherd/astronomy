@@ -138,6 +138,8 @@
     .bodyname .sym { font-size: 0.95rem; }
     .sub { margin-left: 3px; font-size: 0.72rem; }
     .el-state { display: none; }   /* "up"/"down" redundant on narrow screens */
+    .bname { display: none; }      /* symbol alone identifies the body */
+    .az-sub { display: none; }     /* drop compass direction to save width */
     /* Drop the live Window column; the passes panel + sky glow cover it. */
     table.bodies th:nth-child(6), table.bodies td:nth-child(6) { display: none; }
     .badge-in { padding: 1px 6px; font-size: 0.72rem; }
@@ -662,8 +664,8 @@ function tick() {
     const up = pos.el > 0;
     const win = inWindow(pos.az, pos.el);
     rowsHtml += `<tr>
-      <td><span class="bodyname"><span class="sym">${b.sym}</span>${b.name}</span></td>
-      <td>${pos.az.toFixed(1)}°<span class="sub">${compass(pos.az)}</span></td>
+      <td><span class="bodyname"><span class="sym">${b.sym}</span><span class="bname">${b.name}</span></span></td>
+      <td>${pos.az.toFixed(1)}°<span class="sub az-sub">${compass(pos.az)}</span></td>
       <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub el-state">${up ? "up" : "down"}</span></td>
       <td class="num">${fmtTime(rs.rise)}</td>
       <td class="num">${fmtTime(rs.set)}</td>
