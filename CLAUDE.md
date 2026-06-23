@@ -32,6 +32,10 @@ observation window must be applied to **both** files, and the two must produce
 identical numbers for the same instant. This parity is the core invariant of the
 project — don't change one without the other.
 
+**Exception: ISS pass prediction is web-only.** The ISS panel in `index.html`
+fetches a live TLE from CelesTrak and predicts passes using a Keplerian + J2
+propagator. There is no Python equivalent — do not add one.
+
 ## How to run
 
 - **CLI:** `python3 astronomy/france_time.py` (no dependencies — standard library only).
@@ -56,6 +60,13 @@ Both are intentionally **dependency-free**. Keep them that way.
   (0–16°); a body is "in window" when both hold (`in_window`). `next_window_pass`
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
+- **ISS passes (web-only):** `fetchISSTLE` fetches the live TLE from
+  `celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE` on load and
+  hourly. `issAzEl` propagates with Keplerian motion + J2 secular drift of RAAN
+  and argument of perigee. `findISSPasses` scans 3 days ahead (30 s step,
+  bisection-refined) for passes with max elevation ≥ 10°. Each pass shows
+  start → end time, peak elevation, azimuth at peak, duration, and a 🪟 flag if
+  the peak falls inside the observation window.
 - Location is `LATITUDE`/`LONGITUDE` (Nice); display timezone is `Europe/Paris`.
   The web app formats Paris time/locale via `Intl` regardless of the viewer.
 
@@ -79,5 +90,6 @@ is `sky-v1` — bump it in `sw.js` whenever cached assets change.
   been committed directly to `main`. Commit messages end with the
   `Co-Authored-By: Claude` trailer.
 - Output style: the CLI prints an aligned Unicode table; the web app mirrors it
-  with a table, a sky-strip visualization, and a "next window pass" panel.
+  with a table, a sky-strip visualization, a "next window pass" panel, and an
+  ISS pass panel (web-only, live TLE).
 - **Mobile layout (≤480px):** the Elong and Window columns are hidden; azimuth compass sub (`.az-sub`) is hidden. The table must fit the iPhone 16 Pro viewport (393px) without horizontal scroll — keep this constraint when adding columns.
