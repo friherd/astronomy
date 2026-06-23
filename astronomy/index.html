@@ -83,10 +83,10 @@
   table.bodies th {
     text-align: left; color: var(--muted); font-weight: 600;
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
-    padding: 0 8px 10px; border-bottom: 1px solid var(--border);
+    padding: 0 5px 10px; border-bottom: 1px solid var(--border);
   }
   table.bodies th.num, table.bodies td.num { text-align: right; }
-  table.bodies td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
+  table.bodies td { padding: 10px 5px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
   table.bodies tr:last-child td { border-bottom: none; }
   .bodyname { display: flex; align-items: center; gap: 9px; font-weight: 600; }
   .bodyname .sym { font-size: 1.05rem; width: 1.3em; text-align: center; }
@@ -675,8 +675,8 @@ function tick() {
     const elongCell = b.name === "Sun" ? "—" : angSep(sunPos.az, sunPos.el, pos.az, pos.el).toFixed(1) + "°";
     rowsHtml += `<tr>
       <td><span class="bodyname"><span class="sym">${b.sym}</span><span class="bname">${b.name}</span></span></td>
-      <td>${pos.az.toFixed(1)}°<span class="sub az-sub">${compass(pos.az)}</span></td>
-      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub el-state">${up ? "up" : "down"}</span></td>
+      <td>${pos.az.toFixed(1)}°</td>
+      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°</td>
       <td class="num">${elongCell}</td>
       <td class="num">${fmtTime(rs.rise)}</td>
       <td class="num">${fmtTime(rs.set)}</td>
