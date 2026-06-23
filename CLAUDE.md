@@ -60,13 +60,16 @@ Both are intentionally **dependency-free**. Keep them that way.
   (0–16°); a body is "in window" when both hold (`in_window`). `next_window_pass`
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
-- **ISS passes (web-only):** `fetchISSTLE` fetches the live TLE from
+- **ISS (web-only):** `fetchISSTLE` fetches the live TLE from
   `celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE` on load and
   hourly. `issAzEl` propagates with Keplerian motion + J2 secular drift of RAAN
-  and argument of perigee. `findISSPasses` scans 3 days ahead (30 s step,
-  bisection-refined) for passes with max elevation ≥ 10°. Each pass shows
-  start → end time, peak elevation, azimuth at peak, duration, and a 🪟 flag if
-  the peak falls inside the observation window.
+  and argument of perigee. ISS appears as a row in the body table (live az/el,
+  next rise/set from `computeISSRiseSet`, window flag) and as a 🛰️ marker in
+  the sky strip when above the horizon. `findISSPasses` scans 3 days ahead
+  (30 s step, bisection-refined) for passes with max elevation ≥ 10°, shown in
+  a dedicated panel with start → end time, peak elevation, azimuth, duration,
+  and 🪟 if in window. Rise/set cache refreshes every minute; pass list every
+  hour.
 - Location is `LATITUDE`/`LONGITUDE` (Nice); display timezone is `Europe/Paris`.
   The web app formats Paris time/locale via `Intl` regardless of the viewer.
 
