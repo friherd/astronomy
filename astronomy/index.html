@@ -112,6 +112,9 @@
   .passrow.none { color: var(--muted); opacity: 0.55; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
   .iss-in-window { background: rgba(255, 212, 121, 0.07); border-radius: 6px; }
+  .iss-src { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .iss-refresh { font-size: 0.72rem; color: var(--accent); background: none; border: 1px solid rgba(255,212,121,0.4); border-radius: 6px; padding: 1px 8px; cursor: pointer; opacity: 0.85; }
+  .iss-refresh:hover { opacity: 1; }
 
   /* Horizontal-scroll fallback so the 6-column table never breaks the layout. */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -853,8 +856,13 @@ function findISSPasses(tle) {
 
 function renderISSPasses(passes, fresh) {
   const now = new Date();
-  const src = fresh ? "live TLE" : "cached TLE";
-  let html = `<h3>ISS passes · next ${ISS_DAYS} days · max el ≥ ${ISS_MIN_EL}° <span style="font-weight:400;opacity:.6">(${src})</span></h3>`;
+  const now2 = new Date();
+  const fetchStamp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(now2).replace(", ", " ");
+  const src = fresh ? `TLE fetched ${fetchStamp}` : "cached TLE";
+  let html = `<h3>ISS passes · next ${ISS_DAYS} days · max el ≥ ${ISS_MIN_EL}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="refreshISS()">↻ Refresh</button></div>`;
   if (!passes.length) {
     html += `<div class="passrow none"><span>No passes ≥ ${ISS_MIN_EL}° in ${ISS_DAYS} days</span></div>`;
   } else {
@@ -872,11 +880,23 @@ function renderISSPasses(passes, fresh) {
 
 let currentTLE = null;
 
+function refreshISS() {
+  document.querySelector("#iss-passes .iss-src") &&
+    (document.querySelector("#iss-passes .iss-src").textContent = "Fetching…");
+  fetchISSTLE()
+    .then(tle => { currentTLE = tle; renderISSPasses(findISSPasses(tle), true); })
+    .catch(err => {
+      document.getElementById("iss-passes").innerHTML =
+        `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and reload.</div>`;
+      console.error("ISS TLE fetch failed:", err);
+    });
+}
+
 fetchISSTLE()
   .then(tle => {
     currentTLE = tle;
     renderISSPasses(findISSPasses(tle), true);
-    setInterval(() => renderISSPasses(findISSPasses(currentTLE), true), 5 * 60000);
+    setInterval(() => refreshISS(), 60 * 60000);
   })
   .catch(err => {
     document.getElementById("iss-passes").innerHTML =
