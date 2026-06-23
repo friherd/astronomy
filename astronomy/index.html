@@ -111,6 +111,7 @@
   .passrow .pdur { color: var(--muted); font-size: 0.8rem; }
   .passrow.none { color: var(--muted); opacity: 0.55; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
+  .iss-in-window { background: rgba(255, 212, 121, 0.07); border-radius: 6px; }
 
   /* Horizontal-scroll fallback so the 6-column table never breaks the layout. */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -184,6 +185,11 @@
     </div>
 
     <div class="passes" id="passes"></div>
+
+    <div class="passes" id="iss-passes">
+      <h3>ISS passes</h3>
+      <div class="passrow none">Loading…</div>
+    </div>
 
     <footer>Computed in-browser · NOAA solar + Schlyter lunar &amp; planetary algorithms</footer>
   </div>
@@ -719,6 +725,164 @@ function renderPasses() {
   }
   document.getElementById("passes").innerHTML = html;
 }
+
+// === ISS PASS PREDICTION (web-only — no Python parity) ===
+
+const ISS_MIN_EL = 10;      // degrees minimum elevation for a "visible" pass
+const ISS_DAYS   = 3;
+const ISS_STEP   = 30000;   // ms scan step
+const MU_E = 398600.4418;   // km^3/s^2
+const RE   = 6378.137;      // km
+const J2   = 1.08263e-3;
+const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
+
+async function fetchISSTLE() {
+  const r = await fetch(
+    "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE",
+    { cache: "no-cache" }
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const txt = await r.text();
+  const lines = txt.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 3 || !lines[1].startsWith("1 ") || !lines[2].startsWith("2 "))
+    throw new Error("Unexpected format");
+  return [lines[0], lines[1], lines[2]];
+}
+
+function tleEpoch(line1) {
+  const s  = line1.substring(18, 32).trim();
+  const y2 = parseInt(s.substring(0, 2), 10);
+  const yr = y2 >= 57 ? 1900 + y2 : 2000 + y2;
+  return new Date(Date.UTC(yr, 0, 1) + (parseFloat(s.substring(2)) - 1) * 86400000);
+}
+
+function issAzEl(tle, tMs) {
+  const [, l1, l2] = tle;
+  const epoch = tleEpoch(l1);
+  const incl  = parseFloat(l2.substring(8,  16)) * RAD;
+  const raan0 = parseFloat(l2.substring(17, 25)) * RAD;
+  const ecc   = parseFloat("0." + l2.substring(26, 33));
+  const argp0 = parseFloat(l2.substring(34, 42)) * RAD;
+  const m0    = parseFloat(l2.substring(43, 51)) * RAD;
+  const n     = parseFloat(l2.substring(52, 63)) * 2 * Math.PI / 86400; // rad/s
+  const dt    = (tMs - epoch.getTime()) / 1000; // seconds
+
+  const a = Math.cbrt(MU_E / (n * n));
+  const p = a * (1 - ecc * ecc);
+  // J2 secular drift of RAAN and argp
+  const raanDot = -1.5 * J2 * (RE / p) ** 2 * n * Math.cos(incl);
+  const argpDot =  0.75 * J2 * (RE / p) ** 2 * n * (5 * Math.cos(incl) ** 2 - 1);
+  const raan = raan0 + raanDot * dt;
+  const argp = argp0 + argpDot * dt;
+
+  // Solve Kepler (near-circular, 5 iterations is plenty)
+  const M = m0 + n * dt;
+  let E = M;
+  for (let i = 0; i < 5; i++) E = M + ecc * Math.sin(E);
+
+  const xp = a * (Math.cos(E) - ecc);
+  const yp = a * Math.sqrt(1 - ecc * ecc) * Math.sin(E);
+
+  // Perifocal → ECI
+  const cR = Math.cos(raan), sR = Math.sin(raan);
+  const cI = Math.cos(incl), sI = Math.sin(incl);
+  const cW = Math.cos(argp), sW = Math.sin(argp);
+  const xeci = (cR*cW - sR*sW*cI)*xp + (-cR*sW - sR*cW*cI)*yp;
+  const yeci = (sR*cW + cR*sW*cI)*xp + (-sR*sW + cR*cW*cI)*yp;
+  const zeci = sI*sW*xp + sI*cW*yp;
+
+  // ECI → ECEF (rotate by GMST)
+  const gmst = rev(280.46061837 + 360.98564736629 * (tMs - J2K) / 86400000) * RAD;
+  const cG = Math.cos(gmst), sG = Math.sin(gmst);
+  const xef = cG*xeci + sG*yeci;
+  const yef = -sG*xeci + cG*yeci;
+  const zef = zeci;
+
+  // Observer ECEF
+  const latR = LAT * RAD, lonR = LON * RAD;
+  const cLat = Math.cos(latR), sLat = Math.sin(latR);
+  const cLon = Math.cos(lonR), sLon = Math.sin(lonR);
+  const dx = xef - RE * cLat * cLon;
+  const dy = yef - RE * cLat * sLon;
+  const dz = zef - RE * sLat;
+
+  // Topocentric SEZ → az/el
+  const S  =  sLat*cLon*dx + sLat*sLon*dy - cLat*dz;
+  const E2 = -sLon*dx + cLon*dy;
+  const Z  =  cLat*cLon*dx + cLat*sLon*dy + sLat*dz;
+  const rng = Math.sqrt(dx*dx + dy*dy + dz*dz);
+  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG };
+}
+
+function findISSPasses(tle) {
+  const start = Date.now();
+  const end   = start + ISS_DAYS * 86400000;
+  const passes = [];
+  let inPass = false, passStart, passMaxEl, passMaxT;
+
+  for (let t = start; t <= end; t += ISS_STEP) {
+    const el = issAzEl(tle, t).el;
+    if (el >= ISS_MIN_EL) {
+      if (!inPass) {
+        // bisect entry
+        let lo = t - ISS_STEP, hi = t;
+        while (hi - lo > 1000) {
+          const mid = (lo + hi) / 2;
+          if (issAzEl(tle, mid).el >= ISS_MIN_EL) hi = mid; else lo = mid;
+        }
+        passStart = (lo + hi) / 2;
+        inPass = true; passMaxEl = el; passMaxT = t;
+      } else if (el > passMaxEl) { passMaxEl = el; passMaxT = t; }
+    } else if (inPass) {
+      // bisect exit
+      let lo = t - ISS_STEP, hi = t;
+      while (hi - lo > 1000) {
+        const mid = (lo + hi) / 2;
+        if (issAzEl(tle, mid).el >= ISS_MIN_EL) lo = mid; else hi = mid;
+      }
+      const passEnd = (lo + hi) / 2;
+      const maxPos = issAzEl(tle, passMaxT);
+      const winPass = inWindow(maxPos.az, passMaxEl);
+      passes.push({ start: passStart, end: passEnd, maxEl: passMaxEl, maxAz: maxPos.az, maxT: passMaxT, win: winPass });
+      inPass = false;
+      if (passes.length >= 5) break;
+    }
+  }
+  return passes;
+}
+
+function renderISSPasses(passes, fresh) {
+  const now = new Date();
+  const src = fresh ? "live TLE" : "cached TLE";
+  let html = `<h3>ISS passes · next ${ISS_DAYS} days · max el ≥ ${ISS_MIN_EL}° <span style="font-weight:400;opacity:.6">(${src})</span></h3>`;
+  if (!passes.length) {
+    html += `<div class="passrow none"><span>No passes ≥ ${ISS_MIN_EL}° in ${ISS_DAYS} days</span></div>`;
+  } else {
+    for (const p of passes) {
+      const dur = Math.round((p.end - p.start) / 60000);
+      html += `<div class="passrow${p.win ? " iss-in-window" : ""}">
+        <span class="pname"><span class="sym">🛰️</span>ISS</span>
+        <span class="ptime">${passStamp(new Date(p.start), now)} → ${fmtTime(new Date(p.end))}</span>
+        <span class="pdur">${Math.round(p.maxEl)}° el · ${Math.round(p.maxAz)}° az · ${dur} min${p.win ? " 🪟" : ""}</span>
+      </div>`;
+    }
+  }
+  document.getElementById("iss-passes").innerHTML = html;
+}
+
+let currentTLE = null;
+
+fetchISSTLE()
+  .then(tle => {
+    currentTLE = tle;
+    renderISSPasses(findISSPasses(tle), true);
+    setInterval(() => renderISSPasses(findISSPasses(currentTLE), true), 5 * 60000);
+  })
+  .catch(err => {
+    document.getElementById("iss-passes").innerHTML =
+      `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and reload.</div>`;
+    console.error("ISS TLE fetch failed:", err);
+  });
 
 tick();
 setInterval(tick, 1000);
