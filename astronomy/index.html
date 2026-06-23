@@ -772,6 +772,21 @@ const RE   = 6378.137;      // km
 const J2   = 1.08263e-3;
 const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
 
+const TLE_CACHE_KEY = "iss_tle_cache";
+
+function saveTLECache(tle) {
+  try {
+    localStorage.setItem(TLE_CACHE_KEY, JSON.stringify({ tle, ts: Date.now() }));
+  } catch (e) {}
+}
+
+function loadTLECache() {
+  try {
+    const raw = localStorage.getItem(TLE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
 async function fetchISSTLE() {
   const r = await fetch(
     "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE",
@@ -782,7 +797,9 @@ async function fetchISSTLE() {
   const lines = txt.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length < 3 || !lines[1].startsWith("1 ") || !lines[2].startsWith("2 "))
     throw new Error("Unexpected format");
-  return [lines[0], lines[1], lines[2]];
+  const tle = [lines[0], lines[1], lines[2]];
+  saveTLECache(tle);
+  return tle;
 }
 
 function tleEpoch(line1) {
@@ -887,14 +904,16 @@ function findISSPasses(tle) {
   return passes;
 }
 
-function renderISSPasses(passes, fresh) {
+function renderISSPasses(passes, fetchedAt) {
   const now = new Date();
-  const now2 = new Date();
-  const fetchStamp = new Intl.DateTimeFormat("en-CA", {
+  const stamp = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false
-  }).format(now2).replace(", ", " ");
-  const src = fresh ? `TLE fetched ${fetchStamp}` : "cached TLE";
+  }).format(new Date(fetchedAt)).replace(", ", " ");
+  const ageMin = Math.round((Date.now() - fetchedAt) / 60000);
+  const ageTxt = ageMin < 2 ? "just now" : ageMin < 60 ? `${ageMin} min ago` : `${Math.round(ageMin/60)} hr ago`;
+  const stale = ageMin > 90 ? " ⚠️" : "";
+  const src = `TLE fetched ${stamp} (${ageTxt})${stale}`;
   let html = `<h3>ISS passes · next ${ISS_DAYS} days · max el ≥ ${ISS_MIN_EL}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="refreshISS()">↻ Refresh</button></div>`;
   if (!passes.length) {
     html += `<div class="passrow none"><span>No passes ≥ ${ISS_MIN_EL}° in ${ISS_DAYS} days</span></div>`;
@@ -952,30 +971,40 @@ function computeISSRiseSet() {
   issRS = { rise, set };
 }
 
+function useCachedTLE(label) {
+  const cached = loadTLECache();
+  if (cached) {
+    currentTLE = cached.tle;
+    computeISSRiseSet();
+    renderISSPasses(findISSPasses(cached.tle), cached.ts);
+    console.warn(`ISS TLE ${label} — using cached data from`, new Date(cached.ts));
+  } else {
+    document.getElementById("iss-passes").innerHTML =
+      `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and try again.</div>`;
+  }
+}
+
 function refreshISS() {
-  document.querySelector("#iss-passes .iss-src") &&
-    (document.querySelector("#iss-passes .iss-src").textContent = "Fetching…");
+  const srcEl = document.querySelector("#iss-passes .iss-src");
+  if (srcEl) srcEl.textContent = "Fetching…";
   fetchISSTLE()
-    .then(tle => { currentTLE = tle; renderISSPasses(findISSPasses(tle), true); })
-    .catch(err => {
-      document.getElementById("iss-passes").innerHTML =
-        `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and reload.</div>`;
-      console.error("ISS TLE fetch failed:", err);
-    });
+    .then(tle => { currentTLE = tle; computeISSRiseSet(); renderISSPasses(findISSPasses(tle), Date.now()); })
+    .catch(err => { console.error("ISS TLE fetch failed:", err); useCachedTLE("refresh failed"); });
 }
 
 fetchISSTLE()
   .then(tle => {
     currentTLE = tle;
     computeISSRiseSet();
-    renderISSPasses(findISSPasses(tle), true);
+    renderISSPasses(findISSPasses(tle), Date.now());
     setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
     setInterval(() => refreshISS(), 60 * 60000);
   })
   .catch(err => {
-    document.getElementById("iss-passes").innerHTML =
-      `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and reload.</div>`;
     console.error("ISS TLE fetch failed:", err);
+    useCachedTLE("initial fetch failed");
+    setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
+    setInterval(() => refreshISS(), 60 * 60000);
   });
 
 tick();
