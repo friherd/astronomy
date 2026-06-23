@@ -380,6 +380,15 @@ def planet_position(when: datetime, lat: float, lon: float, planet: str):
     return _to_horizontal(ra, dec, _local_sidereal(d, ut, lon), lat)
 
 
+def ang_sep(az1: float, el1: float, az2: float, el2: float) -> float:
+    """Angular separation (degrees) between two points given in horizontal coords."""
+    a1, a2 = math.radians(el1), math.radians(el2)
+    daz = math.radians(az2 - az1)
+    return math.degrees(math.acos(max(-1.0, min(1.0,
+        math.sin(a1) * math.sin(a2) + math.cos(a1) * math.cos(a2) * math.cos(daz)
+    ))))
+
+
 def compass(azimuth: float) -> str:
     """Nearest 16-point compass direction for an azimuth in degrees."""
     points = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -549,18 +558,20 @@ def main() -> None:
     print(f"  🕐  {heure_str}    🌍  {tz_str}")
     print(f"  🪟  Window: {window_str}")
     print()
+    sun_az, sun_el = solar_position(now, LATITUDE, LONGITUDE)
     print(f"  {'Body':<9}{'Azimuth':<13}{'Elevation':<13}"
-          f"{'Rise':>6}{'Set':>8}{'Window':>10}")
-    print("  " + "─" * 62)
+          f"{'Elong':>7}{'Rise':>6}{'Set':>8}{'Window':>10}")
+    print("  " + "─" * 69)
     for name, fn, h0 in bodies:
         az, el = fn(now, LATITUDE, LONGITUDE)
         rise, setting = rise_set(fn, now, LATITUDE, LONGITUDE, h0)
         az_field = f"{az:5.1f}° {compass(az)}"
         mark = "↑ up" if el > 0 else "↓ down"
         el_field = f"{el:5.1f}° {mark}"
+        elong_field = "—" if name == "Sun" else f"{ang_sep(sun_az, sun_el, az, el):5.1f}°"
         window_field = "✓ IN" if in_window(az, el) else "·"
         print(f"  {name:<9}{az_field:<13}{el_field:<13}"
-              f"{fmt_time(rise):>6}{fmt_time(setting):>8}{window_field:>10}")
+              f"{elong_field:>7}{fmt_time(rise):>6}{fmt_time(setting):>8}{window_field:>10}")
     print()
 
     print(f"  Next window pass (within {WINDOW_HORIZON.days} days):")
