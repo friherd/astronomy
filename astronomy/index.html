@@ -83,10 +83,10 @@
   table.bodies th {
     text-align: left; color: var(--muted); font-weight: 600;
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
-    padding: 0 8px 10px; border-bottom: 1px solid var(--border);
+    padding: 0 5px 10px; border-bottom: 1px solid var(--border);
   }
   table.bodies th.num, table.bodies td.num { text-align: right; }
-  table.bodies td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
+  table.bodies td { padding: 10px 5px; border-bottom: 1px solid rgba(255,255,255,0.05); font-variant-numeric: tabular-nums; }
   table.bodies tr:last-child td { border-bottom: none; }
   .bodyname { display: flex; align-items: center; gap: 9px; font-weight: 600; }
   .bodyname .sym { font-size: 1.05rem; width: 1.3em; text-align: center; }
@@ -138,8 +138,10 @@
     .bodyname .sym { font-size: 0.95rem; }
     .sub { margin-left: 3px; font-size: 0.72rem; }
     .el-state { display: none; }   /* "up"/"down" redundant on narrow screens */
-    /* Drop the live Window column; the passes panel + sky glow cover it. */
-    table.bodies th:nth-child(6), table.bodies td:nth-child(6) { display: none; }
+    .az-sub { display: none; }     /* drop compass direction to save width */
+    /* Drop Elong and Window columns on narrow screens. */
+    table.bodies th:nth-child(4), table.bodies td:nth-child(4) { display: none; }
+    table.bodies th:nth-child(7), table.bodies td:nth-child(7) { display: none; }
     .badge-in { padding: 1px 6px; font-size: 0.72rem; }
 
     .passes h3 { font-size: 0.64rem; }
@@ -171,6 +173,7 @@
             <th>Body</th>
             <th>Azimuth</th>
             <th>Elevation</th>
+            <th class="num">Elong</th>
             <th class="num">Rise</th>
             <th class="num">Set</th>
             <th class="num">Window</th>
@@ -195,7 +198,7 @@ const TZ = "Europe/Paris";
 
 // --- Observation window: a body is "in window" when azimuth AND elevation
 //     both fall inside these (inclusive) ranges, in degrees. ---
-const AZIMUTH_WINDOW = [200, 260];
+const AZIMUTH_WINDOW = [200, 270];
 const ELEVATION_WINDOW = [0, 16];
 const inWindow = (az, el) =>
   az >= AZIMUTH_WINDOW[0] && az <= AZIMUTH_WINDOW[1] &&
@@ -470,6 +473,14 @@ function planetPosition(date, lat, lon, planet) {
 }
 
 // --- 16-point compass direction ---
+function angSep(az1, el1, az2, el2) {
+  const r = Math.PI / 180;
+  const a1 = el1 * r, a2 = el2 * r, daz = (az2 - az1) * r;
+  return Math.acos(Math.max(-1, Math.min(1,
+    Math.sin(a1) * Math.sin(a2) + Math.cos(a1) * Math.cos(a2) * Math.cos(daz)
+  ))) / r;
+}
+
 function compass(az) {
   const pts = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
@@ -653,18 +664,20 @@ function tick() {
   document.getElementById("win").textContent =
     `🪟 Window: az ${AZIMUTH_WINDOW[0]}–${AZIMUTH_WINDOW[1]}°, el ${ELEVATION_WINDOW[0]}–${ELEVATION_WINDOW[1]}°`;
 
-  let sunEl = 0;
+  const sunPos = BODIES[0].fn(now); // Sun is always first
+  let sunEl = sunPos.el;
   let rowsHtml = "";
   for (const b of BODIES) {
     const pos = b.fn(now);
     const rs = riseSet(b.fn, midnight, b.h0);
-    if (b.name === "Sun") sunEl = pos.el;
     const up = pos.el > 0;
     const win = inWindow(pos.az, pos.el);
+    const elongCell = b.name === "Sun" ? "—" : angSep(sunPos.az, sunPos.el, pos.az, pos.el).toFixed(1) + "°";
     rowsHtml += `<tr>
-      <td><span class="bodyname"><span class="sym">${b.sym}</span>${b.name}</span></td>
-      <td>${pos.az.toFixed(1)}°<span class="sub">${compass(pos.az)}</span></td>
-      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°<span class="sub el-state">${up ? "up" : "down"}</span></td>
+      <td><span class="bodyname"><span class="sym">${b.sym}</span><span class="bname">${b.name}</span></span></td>
+      <td>${pos.az.toFixed(1)}°</td>
+      <td class="${up ? "" : "below-txt"}">${pos.el.toFixed(1)}°</td>
+      <td class="num">${elongCell}</td>
       <td class="num">${fmtTime(rs.rise)}</td>
       <td class="num">${fmtTime(rs.set)}</td>
       <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
@@ -673,7 +686,7 @@ function tick() {
     placeMarker(markers[b.name], pos);
   }
   document.getElementById("rows").innerHTML = rowsHtml;
-  updateSky(sunEl);
+  updateSky(sunPos.el);
 }
 
 // --- Next window pass per body (heavier scan; refreshed once a minute) ---
