@@ -51,7 +51,8 @@ Both are intentionally **dependency-free**. Keep them that way.
   perturbations (`planet_position`, `PLANET_ELEMENTS`). Mercury, Venus, Jupiter, Saturn, Mars.
 - **Rise/set:** generic elevation scan refined by bisection (`rise_set`); horizon
   is −0.833° for the Sun/Moon, −0.566° for planets.
-- **Observation window:** `AZIMUTH_WINDOW` (200–260°) and `ELEVATION_WINDOW`
+- **Elongation:** `ang_sep`/`angSep` computes the great-circle angular separation between a body and the Sun from horizontal coordinates; displayed as an "Elong" column in both outputs. Sun row shows `—`.
+- **Observation window:** `AZIMUTH_WINDOW` (200–270°) and `ELEVATION_WINDOW`
   (0–16°); a body is "in window" when both hold (`in_window`). `next_window_pass`
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
@@ -79,3 +80,4 @@ is `sky-v1` — bump it in `sw.js` whenever cached assets change.
   `Co-Authored-By: Claude` trailer.
 - Output style: the CLI prints an aligned Unicode table; the web app mirrors it
   with a table, a sky-strip visualization, and a "next window pass" panel.
+- **Mobile layout (≤480px):** the Elong and Window columns are hidden; azimuth compass sub (`.az-sub`) is hidden. The table must fit the iPhone 16 Pro viewport (393px) without horizontal scroll — keep this constraint when adding columns.
