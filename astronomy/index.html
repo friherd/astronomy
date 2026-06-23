@@ -624,6 +624,14 @@ for (const b of BODIES) {
   markers[b.name] = m;
 }
 
+// ISS marker — shown only when above horizon and TLE is loaded.
+const issMarker = document.createElement("div");
+issMarker.className = "body iss-marker";
+issMarker.textContent = "🛰️";
+issMarker.title = "ISS";
+issMarker.style.display = "none";
+skyEl.appendChild(issMarker);
+
 // Shade the observation window in the sky strip (azimuth across, elevation up).
 (function positionWindowZone() {
   const z = document.getElementById("windowZone");
@@ -696,6 +704,17 @@ function tick() {
   }
   document.getElementById("rows").innerHTML = rowsHtml;
   updateSky(sunPos.el);
+
+  // ISS marker in sky strip
+  if (currentTLE) {
+    const ip = issAzEl(currentTLE, now.getTime());
+    if (ip.el > 0) {
+      issMarker.style.display = "";
+      placeMarker(issMarker, ip);
+    } else {
+      issMarker.style.display = "none";
+    }
+  }
 }
 
 // --- Next window pass per body (heavier scan; refreshed once a minute) ---
