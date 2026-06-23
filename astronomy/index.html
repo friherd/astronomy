@@ -702,6 +702,20 @@ function tick() {
     markers[b.name].classList.toggle("in-window", win);
     placeMarker(markers[b.name], pos);
   }
+  if (currentTLE) {
+    const ip = issAzEl(currentTLE, now.getTime());
+    const up = ip.el > 0;
+    const win = inWindow(ip.az, ip.el);
+    rowsHtml += `<tr>
+      <td><span class="bodyname"><span class="sym">🛰️</span><span class="bname">ISS</span></span></td>
+      <td>${ip.az.toFixed(1)}°</td>
+      <td class="${up ? "" : "below-txt"}">${ip.el.toFixed(1)}°</td>
+      <td class="num">—</td>
+      <td class="num">${fmtTime(issRS.rise)}</td>
+      <td class="num">${fmtTime(issRS.set)}</td>
+      <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
+    </tr>`;
+  }
   document.getElementById("rows").innerHTML = rowsHtml;
   updateSky(sunPos.el);
 
@@ -898,6 +912,45 @@ function renderISSPasses(passes, fresh) {
 }
 
 let currentTLE = null;
+let issRS = { rise: null, set: null };
+
+function computeISSRiseSet() {
+  if (!currentTLE) return;
+  const now = Date.now();
+  const horizon = ISS_DAYS * 86400000;
+  const step = 60 * 1000;
+
+  function bisectEdge(lo, hi, rising) {
+    while (hi - lo > 1000) {
+      const mid = (lo + hi) / 2;
+      const above = issAzEl(currentTLE, mid).el > 0;
+      if (above === rising) hi = mid; else lo = mid;
+    }
+    return new Date((lo + hi) / 2);
+  }
+
+  let rise = null, set = null;
+  let prevEl = issAzEl(currentTLE, now).el;
+
+  if (prevEl > 0) {
+    // Currently up: look back up to 15 min for rise
+    rise = bisectEdge(now - 15 * 60 * 1000, now, true);
+  }
+
+  let t = now;
+  while (t < now + horizon) {
+    t += step;
+    const el = issAzEl(currentTLE, t).el;
+    if (!rise && prevEl <= 0 && el > 0) {
+      rise = bisectEdge(t - step, t, true);
+    } else if (!set && prevEl > 0 && el <= 0) {
+      set = bisectEdge(t - step, t, false);
+      if (rise) break;
+    }
+    prevEl = el;
+  }
+  issRS = { rise, set };
+}
 
 function refreshISS() {
   document.querySelector("#iss-passes .iss-src") &&
@@ -914,7 +967,9 @@ function refreshISS() {
 fetchISSTLE()
   .then(tle => {
     currentTLE = tle;
+    computeISSRiseSet();
     renderISSPasses(findISSPasses(tle), true);
+    setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
     setInterval(() => refreshISS(), 60 * 60000);
   })
   .catch(err => {
