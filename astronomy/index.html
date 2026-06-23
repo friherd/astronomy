@@ -992,20 +992,34 @@ function refreshISS() {
     .catch(err => { console.error("ISS TLE fetch failed:", err); useCachedTLE("refresh failed"); });
 }
 
-fetchISSTLE()
-  .then(tle => {
-    currentTLE = tle;
+const TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function initISS() {
+  const cached = loadTLECache();
+  const cacheAge = cached ? Date.now() - cached.ts : Infinity;
+  setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
+  setInterval(() => refreshISS(), TLE_MAX_AGE_MS);
+
+  if (cached && cacheAge < TLE_MAX_AGE_MS) {
+    // Fresh enough — use cache, no fetch needed
+    currentTLE = cached.tle;
     computeISSRiseSet();
-    renderISSPasses(findISSPasses(tle), Date.now());
-    setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
-    setInterval(() => refreshISS(), 60 * 60000);
-  })
-  .catch(err => {
-    console.error("ISS TLE fetch failed:", err);
-    useCachedTLE("initial fetch failed");
-    setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
-    setInterval(() => refreshISS(), 60 * 60000);
-  });
+    renderISSPasses(findISSPasses(cached.tle), cached.ts);
+  } else {
+    fetchISSTLE()
+      .then(tle => {
+        currentTLE = tle;
+        computeISSRiseSet();
+        renderISSPasses(findISSPasses(tle), Date.now());
+      })
+      .catch(err => {
+        console.error("ISS TLE fetch failed:", err);
+        useCachedTLE("initial fetch failed");
+      });
+  }
+}
+
+initISS();
 
 tick();
 setInterval(tick, 1000);
