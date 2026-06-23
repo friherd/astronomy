@@ -138,7 +138,6 @@
     .bodyname .sym { font-size: 0.95rem; }
     .sub { margin-left: 3px; font-size: 0.72rem; }
     .el-state { display: none; }   /* "up"/"down" redundant on narrow screens */
-    .bname { display: none; }      /* symbol alone identifies the body */
     .az-sub { display: none; }     /* drop compass direction to save width */
     /* Drop the live Window column; the passes panel + sky glow cover it. */
     table.bodies th:nth-child(6), table.bodies td:nth-child(6) { display: none; }
@@ -197,7 +196,7 @@ const TZ = "Europe/Paris";
 
 // --- Observation window: a body is "in window" when azimuth AND elevation
 //     both fall inside these (inclusive) ranges, in degrees. ---
-const AZIMUTH_WINDOW = [200, 260];
+const AZIMUTH_WINDOW = [200, 270];
 const ELEVATION_WINDOW = [0, 16];
 const inWindow = (az, el) =>
   az >= AZIMUTH_WINDOW[0] && az <= AZIMUTH_WINDOW[1] &&

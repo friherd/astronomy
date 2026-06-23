@@ -15,7 +15,7 @@ LONGITUDE = 7.21231
 
 # Observation window: a body counts as "in window" when its azimuth and
 # elevation both fall inside these (inclusive) ranges, in degrees.
-AZIMUTH_WINDOW = (200.0, 260.0)
+AZIMUTH_WINDOW = (200.0, 270.0)
 ELEVATION_WINDOW = (0.0, 16.0)
 
 # How far ahead to look for the next window pass, and the coarse scan step.
