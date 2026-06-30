@@ -92,6 +92,7 @@
   .bodyname .sym { font-size: 1.05rem; width: 1.3em; text-align: center; }
   .sub { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 4px; }
   td.below-txt, .below-txt { color: var(--muted); }
+  .alt-sub { font-size: 0.72rem; color: var(--muted); opacity: 0.8; }
   .badge-in {
     display: inline-block; padding: 1px 8px; border-radius: 10px;
     background: rgba(255, 212, 121, 0.18); border: 1px solid rgba(255, 212, 121, 0.5);
@@ -720,7 +721,7 @@ function tick() {
       rowsHtml += `<tr>
         <td><span class="bodyname"><span class="sym">${sat.sym}</span><span class="bname">${sat.name}</span></span></td>
         <td>${sp.az.toFixed(1)}°</td>
-        <td class="${up ? "" : "below-txt"}">${sp.el.toFixed(1)}°<div class="az-sub">${Math.round(sp.alt)} km</div></td>
+        <td class="${up ? "" : "below-txt"}">${sp.el.toFixed(1)}°<div class="alt-sub">${Math.round(sp.alt)} km</div></td>
         <td class="num">—</td>
         <td class="num">${fmtTime(sat.rs.rise)}</td>
         <td class="num">${fmtTime(sat.rs.set)}</td>
