@@ -190,7 +190,12 @@
     <div class="passes" id="passes"></div>
 
     <div class="passes" id="iss-passes">
-      <h3>ISS passes</h3>
+      <h3>🛰️ ISS passes</h3>
+      <div class="passrow none">Loading…</div>
+    </div>
+
+    <div class="passes" id="swift-passes">
+      <h3>🔭 Swift passes</h3>
       <div class="passrow none">Loading…</div>
     </div>
 
@@ -624,13 +629,18 @@ for (const b of BODIES) {
   markers[b.name] = m;
 }
 
-// ISS marker — shown only when above horizon and TLE is loaded.
-const issMarker = document.createElement("div");
-issMarker.className = "body iss-marker";
-issMarker.textContent = "🛰️";
-issMarker.title = "ISS";
-issMarker.style.display = "none";
-skyEl.appendChild(issMarker);
+// Satellite sky-strip markers
+function makeSatMarker(sym, title) {
+  const m = document.createElement("div");
+  m.className = "body iss-marker";
+  m.textContent = sym;
+  m.title = title;
+  m.style.display = "none";
+  skyEl.appendChild(m);
+  return m;
+}
+const issMarker   = makeSatMarker("🛰️", "ISS");
+const swiftMarker = makeSatMarker("🔭", "Swift");
 
 // Shade the observation window in the sky strip (azimuth across, elevation up).
 (function positionWindowZone() {
@@ -702,31 +712,31 @@ function tick() {
     markers[b.name].classList.toggle("in-window", win);
     placeMarker(markers[b.name], pos);
   }
-  if (currentTLE) {
-    const ip = issAzEl(currentTLE, now.getTime());
-    const up = ip.el > 0;
-    const win = inWindow(ip.az, ip.el);
-    rowsHtml += `<tr>
-      <td><span class="bodyname"><span class="sym">🛰️</span><span class="bname">ISS</span></span></td>
-      <td>${ip.az.toFixed(1)}°</td>
-      <td class="${up ? "" : "below-txt"}">${ip.el.toFixed(1)}°<div class="az-sub">${Math.round(ip.alt)} km</div></td>
-      <td class="num">—</td>
-      <td class="num">${fmtTime(issRS.rise)}</td>
-      <td class="num">${fmtTime(issRS.set)}</td>
-      <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
-    </tr>`;
+  for (const sat of [ISS_SAT, SWIFT_SAT]) {
+    if (sat.tle) {
+      const sp = satAzEl(sat.tle, now.getTime());
+      const up = sp.el > 0;
+      const win = inWindow(sp.az, sp.el);
+      rowsHtml += `<tr>
+        <td><span class="bodyname"><span class="sym">${sat.sym}</span><span class="bname">${sat.name}</span></span></td>
+        <td>${sp.az.toFixed(1)}°</td>
+        <td class="${up ? "" : "below-txt"}">${sp.el.toFixed(1)}°<div class="az-sub">${Math.round(sp.alt)} km</div></td>
+        <td class="num">—</td>
+        <td class="num">${fmtTime(sat.rs.rise)}</td>
+        <td class="num">${fmtTime(sat.rs.set)}</td>
+        <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
+      </tr>`;
+    }
   }
   document.getElementById("rows").innerHTML = rowsHtml;
   updateSky(sunPos.el);
 
-  // ISS marker in sky strip
-  if (currentTLE) {
-    const ip = issAzEl(currentTLE, now.getTime());
-    if (ip.el > 0) {
-      issMarker.style.display = "";
-      placeMarker(issMarker, ip);
-    } else {
-      issMarker.style.display = "none";
+  // Satellite markers in sky strip
+  for (const [sat, marker] of [[ISS_SAT, issMarker], [SWIFT_SAT, swiftMarker]]) {
+    if (sat.tle) {
+      const sp = satAzEl(sat.tle, now.getTime());
+      if (sp.el > 0) { marker.style.display = ""; placeMarker(marker, sp); }
+      else marker.style.display = "none";
     }
   }
 }
@@ -764,32 +774,25 @@ function renderPasses() {
 
 // === ISS PASS PREDICTION (web-only — no Python parity) ===
 
-const ISS_MIN_EL = 10;      // degrees minimum elevation for a "visible" pass
-const ISS_DAYS   = 3;
-const ISS_STEP   = 30000;   // ms scan step
 const MU_E = 398600.4418;   // km^3/s^2
 const RE   = 6378.137;      // km
 const J2   = 1.08263e-3;
 const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
 
-const TLE_CACHE_KEY = "iss_tle_cache";
+// --- Satellite config objects ---
+const ISS_SAT   = { norad: 25544, name: "ISS",   sym: "🛰️", cacheKey: "iss_tle_cache",   minEl: 10, tle: null, rs: { rise: null, set: null } };
+const SWIFT_SAT = { norad: 28485, name: "Swift",  sym: "🔭", cacheKey: "swift_tle_cache", minEl: 0,  tle: null, rs: { rise: null, set: null } };
 
-function saveTLECache(tle) {
-  try {
-    localStorage.setItem(TLE_CACHE_KEY, JSON.stringify({ tle, ts: Date.now() }));
-  } catch (e) {}
+function saveTLECache(key, tle) {
+  try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now() })); } catch (e) {}
+}
+function loadTLECache(key) {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 
-function loadTLECache() {
-  try {
-    const raw = localStorage.getItem(TLE_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) { return null; }
-}
-
-async function fetchISSTLE() {
+async function fetchSatTLE(sat) {
   const r = await fetch(
-    "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE",
+    `https://celestrak.org/NORAD/elements/gp.php?CATNR=${sat.norad}&FORMAT=TLE`,
     { cache: "no-cache" }
   );
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -798,7 +801,7 @@ async function fetchISSTLE() {
   if (lines.length < 3 || !lines[1].startsWith("1 ") || !lines[2].startsWith("2 "))
     throw new Error("Unexpected format");
   const tle = [lines[0], lines[1], lines[2]];
-  saveTLECache(tle);
+  saveTLECache(sat.cacheKey, tle);
   return tle;
 }
 
@@ -809,7 +812,7 @@ function tleEpoch(line1) {
   return new Date(Date.UTC(yr, 0, 1) + (parseFloat(s.substring(2)) - 1) * 86400000);
 }
 
-function issAzEl(tle, tMs) {
+function satAzEl(tle, tMs) {
   const [, l1, l2] = tle;
   const epoch = tleEpoch(l1);
   const incl  = parseFloat(l2.substring(8,  16)) * RAD;
@@ -868,36 +871,36 @@ function issAzEl(tle, tMs) {
   return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt };
 }
 
-function findISSPasses(tle) {
+const SAT_DAYS = 3;
+const SAT_STEP = 30000; // ms
+
+function findSatPasses(sat) {
   const start = Date.now();
-  const end   = start + ISS_DAYS * 86400000;
+  const end   = start + SAT_DAYS * 86400000;
   const passes = [];
   let inPass = false, passStart, passMaxEl, passMaxT;
 
-  for (let t = start; t <= end; t += ISS_STEP) {
-    const el = issAzEl(tle, t).el;
-    if (el >= ISS_MIN_EL) {
+  for (let t = start; t <= end; t += SAT_STEP) {
+    const el = satAzEl(sat.tle, t).el;
+    if (el >= sat.minEl) {
       if (!inPass) {
-        // bisect entry
-        let lo = t - ISS_STEP, hi = t;
+        let lo = t - SAT_STEP, hi = t;
         while (hi - lo > 1000) {
           const mid = (lo + hi) / 2;
-          if (issAzEl(tle, mid).el >= ISS_MIN_EL) hi = mid; else lo = mid;
+          if (satAzEl(sat.tle, mid).el >= sat.minEl) hi = mid; else lo = mid;
         }
         passStart = (lo + hi) / 2;
         inPass = true; passMaxEl = el; passMaxT = t;
       } else if (el > passMaxEl) { passMaxEl = el; passMaxT = t; }
     } else if (inPass) {
-      // bisect exit
-      let lo = t - ISS_STEP, hi = t;
+      let lo = t - SAT_STEP, hi = t;
       while (hi - lo > 1000) {
         const mid = (lo + hi) / 2;
-        if (issAzEl(tle, mid).el >= ISS_MIN_EL) lo = mid; else hi = mid;
+        if (satAzEl(sat.tle, mid).el >= sat.minEl) lo = mid; else hi = mid;
       }
       const passEnd = (lo + hi) / 2;
-      const maxPos = issAzEl(tle, passMaxT);
-      const winPass = inWindow(maxPos.az, passMaxEl);
-      passes.push({ start: passStart, end: passEnd, maxEl: passMaxEl, maxAz: maxPos.az, maxT: passMaxT, win: winPass });
+      const maxPos = satAzEl(sat.tle, passMaxT);
+      passes.push({ start: passStart, end: passEnd, maxEl: passMaxEl, maxAz: maxPos.az, maxT: passMaxT, win: inWindow(maxPos.az, passMaxEl) });
       inPass = false;
       if (passes.length >= 5) break;
     }
@@ -905,7 +908,7 @@ function findISSPasses(tle) {
   return passes;
 }
 
-function renderISSPasses(passes, fetchedAt) {
+function renderSatPasses(sat, fetchedAt) {
   const now = new Date();
   const stamp = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
@@ -915,112 +918,98 @@ function renderISSPasses(passes, fetchedAt) {
   const ageTxt = ageMin < 2 ? "just now" : ageMin < 60 ? `${ageMin} min ago` : `${Math.round(ageMin/60)} hr ago`;
   const stale = ageMin > 90 ? " ⚠️" : "";
   const src = `TLE fetched ${stamp} (${ageTxt})${stale}`;
-  let html = `<h3>ISS passes · next ${ISS_DAYS} days · max el ≥ ${ISS_MIN_EL}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="refreshISS()">↻ Refresh</button></div>`;
+  const refreshFn = `refresh${sat.name.replace(/\s+/g,"")}()`;
+  const passes = findSatPasses(sat);
+  let html = `<h3>${sat.sym} ${sat.name} passes · next ${SAT_DAYS} days · max el ≥ ${sat.minEl}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="${refreshFn}">↻ Refresh</button></div>`;
   if (!passes.length) {
-    html += `<div class="passrow none"><span>No passes ≥ ${ISS_MIN_EL}° in ${ISS_DAYS} days</span></div>`;
+    html += `<div class="passrow none"><span>No passes ≥ ${sat.minEl}° in ${SAT_DAYS} days</span></div>`;
   } else {
     for (const p of passes) {
       const dur = Math.round((p.end - p.start) / 60000);
       html += `<div class="passrow${p.win ? " iss-in-window" : ""}">
-        <span class="pname"><span class="sym">🛰️</span>ISS</span>
+        <span class="pname"><span class="sym">${sat.sym}</span>${sat.name}</span>
         <span class="ptime">${passStamp(new Date(p.start), now)} → ${fmtTime(new Date(p.end))}</span>
         <span class="pdur">${Math.round(p.maxEl)}° el · ${Math.round(p.maxAz)}° az · ${dur} min${p.win ? " 🪟" : ""}</span>
       </div>`;
     }
   }
-  document.getElementById("iss-passes").innerHTML = html;
+  document.getElementById(`${sat.name.toLowerCase()}-passes`).innerHTML = html;
 }
 
-let currentTLE = null;
-let issRS = { rise: null, set: null };
-
-function computeISSRiseSet() {
-  if (!currentTLE) return;
+function computeSatRiseSet(sat) {
+  if (!sat.tle) return;
   const now = Date.now();
-  const horizon = ISS_DAYS * 86400000;
+  const horizon = SAT_DAYS * 86400000;
   const step = 60 * 1000;
 
   function bisectEdge(lo, hi, rising) {
     while (hi - lo > 1000) {
       const mid = (lo + hi) / 2;
-      const above = issAzEl(currentTLE, mid).el > 0;
+      const above = satAzEl(sat.tle, mid).el > 0;
       if (above === rising) hi = mid; else lo = mid;
     }
     return new Date((lo + hi) / 2);
   }
 
   let rise = null, set = null;
-  let prevEl = issAzEl(currentTLE, now).el;
-
-  if (prevEl > 0) {
-    // Currently up: look back up to 15 min for rise
-    rise = bisectEdge(now - 15 * 60 * 1000, now, true);
-  }
+  let prevEl = satAzEl(sat.tle, now).el;
+  if (prevEl > 0) rise = bisectEdge(now - 15 * 60 * 1000, now, true);
 
   let t = now;
   while (t < now + horizon) {
     t += step;
-    const el = issAzEl(currentTLE, t).el;
-    if (!rise && prevEl <= 0 && el > 0) {
-      rise = bisectEdge(t - step, t, true);
-    } else if (!set && prevEl > 0 && el <= 0) {
-      set = bisectEdge(t - step, t, false);
-      if (rise) break;
-    }
+    const el = satAzEl(sat.tle, t).el;
+    if (!rise && prevEl <= 0 && el > 0) rise = bisectEdge(t - step, t, true);
+    else if (!set && prevEl > 0 && el <= 0) { set = bisectEdge(t - step, t, false); if (rise) break; }
     prevEl = el;
   }
-  issRS = { rise, set };
+  sat.rs = { rise, set };
 }
 
-function useCachedTLE(label) {
-  const cached = loadTLECache();
+const TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+function useCachedSatTLE(sat) {
+  const cached = loadTLECache(sat.cacheKey);
   if (cached) {
-    currentTLE = cached.tle;
-    computeISSRiseSet();
-    renderISSPasses(findISSPasses(cached.tle), cached.ts);
-    console.warn(`ISS TLE ${label} — using cached data from`, new Date(cached.ts));
+    sat.tle = cached.tle;
+    computeSatRiseSet(sat);
+    renderSatPasses(sat, cached.ts);
+    console.warn(`${sat.name} TLE fetch failed — using cached data from`, new Date(cached.ts));
   } else {
-    document.getElementById("iss-passes").innerHTML =
-      `<h3>ISS passes</h3><div class="passrow none">Could not load TLE data — connect to the internet and try again.</div>`;
+    document.getElementById(`${sat.name.toLowerCase()}-passes`).innerHTML =
+      `<h3>${sat.sym} ${sat.name} passes</h3><div class="passrow none">Could not load TLE — connect and try again.</div>`;
   }
 }
 
-function refreshISS() {
-  const srcEl = document.querySelector("#iss-passes .iss-src");
+function refreshSat(sat) {
+  const srcEl = document.querySelector(`#${sat.name.toLowerCase()}-passes .iss-src`);
   if (srcEl) srcEl.textContent = "Fetching…";
-  fetchISSTLE()
-    .then(tle => { currentTLE = tle; computeISSRiseSet(); renderISSPasses(findISSPasses(tle), Date.now()); })
-    .catch(err => { console.error("ISS TLE fetch failed:", err); useCachedTLE("refresh failed"); });
+  fetchSatTLE(sat)
+    .then(tle => { sat.tle = tle; computeSatRiseSet(sat); renderSatPasses(sat, Date.now()); })
+    .catch(err => { console.error(`${sat.name} TLE fetch failed:`, err); useCachedSatTLE(sat); });
 }
 
-const TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+function refreshISS()   { refreshSat(ISS_SAT); }
+function refreshSwift() { refreshSat(SWIFT_SAT); }
 
-function initISS() {
-  const cached = loadTLECache();
+function initSat(sat) {
+  const cached = loadTLECache(sat.cacheKey);
   const cacheAge = cached ? Date.now() - cached.ts : Infinity;
-  setInterval(() => { computeISSRiseSet(); }, 60 * 1000);
-  setInterval(() => refreshISS(), TLE_MAX_AGE_MS);
-
   if (cached && cacheAge < TLE_MAX_AGE_MS) {
-    // Fresh enough — use cache, no fetch needed
-    currentTLE = cached.tle;
-    computeISSRiseSet();
-    renderISSPasses(findISSPasses(cached.tle), cached.ts);
+    sat.tle = cached.tle;
+    computeSatRiseSet(sat);
+    renderSatPasses(sat, cached.ts);
   } else {
-    fetchISSTLE()
-      .then(tle => {
-        currentTLE = tle;
-        computeISSRiseSet();
-        renderISSPasses(findISSPasses(tle), Date.now());
-      })
-      .catch(err => {
-        console.error("ISS TLE fetch failed:", err);
-        useCachedTLE("initial fetch failed");
-      });
+    fetchSatTLE(sat)
+      .then(tle => { sat.tle = tle; computeSatRiseSet(sat); renderSatPasses(sat, Date.now()); })
+      .catch(err => { console.error(`${sat.name} TLE fetch failed:`, err); useCachedSatTLE(sat); });
   }
 }
 
-initISS();
+setInterval(() => { computeSatRiseSet(ISS_SAT); computeSatRiseSet(SWIFT_SAT); }, 60 * 1000);
+setInterval(() => { refreshSat(ISS_SAT); refreshSat(SWIFT_SAT); }, TLE_MAX_AGE_MS);
+initSat(ISS_SAT);
+initSat(SWIFT_SAT);
 
 tick();
 setInterval(tick, 1000);
