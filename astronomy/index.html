@@ -709,7 +709,7 @@ function tick() {
     rowsHtml += `<tr>
       <td><span class="bodyname"><span class="sym">🛰️</span><span class="bname">ISS</span></span></td>
       <td>${ip.az.toFixed(1)}°</td>
-      <td class="${up ? "" : "below-txt"}">${ip.el.toFixed(1)}°</td>
+      <td class="${up ? "" : "below-txt"}">${ip.el.toFixed(1)}°<div class="az-sub">${Math.round(ip.alt)} km</div></td>
       <td class="num">—</td>
       <td class="num">${fmtTime(issRS.rise)}</td>
       <td class="num">${fmtTime(issRS.set)}</td>
@@ -864,7 +864,8 @@ function issAzEl(tle, tMs) {
   const E2 = -sLon*dx + cLon*dy;
   const Z  =  cLat*cLon*dx + cLat*sLon*dy + sLat*dz;
   const rng = Math.sqrt(dx*dx + dy*dy + dz*dz);
-  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG };
+  const alt = a * (1 - ecc * Math.cos(E)) - RE;
+  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt };
 }
 
 function findISSPasses(tle) {
