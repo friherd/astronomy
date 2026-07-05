@@ -200,6 +200,11 @@
       <div class="passrow none">Loading…</div>
     </div>
 
+    <div class="passes" id="link-passes">
+      <h3>🔗 Link passes</h3>
+      <div class="passrow none">Loading…</div>
+    </div>
+
     <footer>Computed in-browser · NOAA solar + Schlyter lunar &amp; planetary algorithms</footer>
   </div>
 
@@ -642,6 +647,7 @@ function makeSatMarker(sym, title) {
 }
 const issMarker   = makeSatMarker("🛰️", "ISS");
 const swiftMarker = makeSatMarker("🔭", "Swift");
+const linkMarker  = makeSatMarker("🔗", "LINK");
 
 // Shade the observation window in the sky strip (azimuth across, elevation up).
 (function positionWindowZone() {
@@ -713,7 +719,7 @@ function tick() {
     markers[b.name].classList.toggle("in-window", win);
     placeMarker(markers[b.name], pos);
   }
-  for (const sat of [ISS_SAT, SWIFT_SAT]) {
+  for (const sat of [ISS_SAT, SWIFT_SAT, LINK_SAT]) {
     if (sat.tle) {
       const sp = satAzEl(sat.tle, now.getTime());
       const up = sp.el > 0;
@@ -733,7 +739,7 @@ function tick() {
   updateSky(sunPos.el);
 
   // Satellite markers in sky strip
-  for (const [sat, marker] of [[ISS_SAT, issMarker], [SWIFT_SAT, swiftMarker]]) {
+  for (const [sat, marker] of [[ISS_SAT, issMarker], [SWIFT_SAT, swiftMarker], [LINK_SAT, linkMarker]]) {
     if (sat.tle) {
       const sp = satAzEl(sat.tle, now.getTime());
       if (sp.el > 0) { marker.style.display = ""; placeMarker(marker, sp); }
@@ -783,6 +789,7 @@ const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
 // --- Satellite config objects ---
 const ISS_SAT   = { norad: 25544, name: "ISS",   sym: "🛰️", cacheKey: "iss_tle_cache",   minEl: 10, tle: null, rs: { rise: null, set: null } };
 const SWIFT_SAT = { norad: 28485, name: "Swift",  sym: "🔭", cacheKey: "swift_tle_cache", minEl: 0,  tle: null, rs: { rise: null, set: null } };
+const LINK_SAT  = { norad: 69793, name: "LINK",   sym: "🔗", cacheKey: "link_tle_cache",  minEl: 0,  tle: null, rs: { rise: null, set: null } };
 
 function saveTLECache(key, tle) {
   try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now() })); } catch (e) {}
@@ -992,6 +999,7 @@ function refreshSat(sat) {
 
 function refreshISS()   { refreshSat(ISS_SAT); }
 function refreshSwift() { refreshSat(SWIFT_SAT); }
+function refreshLINK()  { refreshSat(LINK_SAT); }
 
 function initSat(sat) {
   const cached = loadTLECache(sat.cacheKey);
@@ -1007,10 +1015,11 @@ function initSat(sat) {
   }
 }
 
-setInterval(() => { computeSatRiseSet(ISS_SAT); computeSatRiseSet(SWIFT_SAT); }, 60 * 1000);
-setInterval(() => { refreshSat(ISS_SAT); refreshSat(SWIFT_SAT); }, TLE_MAX_AGE_MS);
+setInterval(() => { computeSatRiseSet(ISS_SAT); computeSatRiseSet(SWIFT_SAT); computeSatRiseSet(LINK_SAT); }, 60 * 1000);
+setInterval(() => { refreshSat(ISS_SAT); refreshSat(SWIFT_SAT); refreshSat(LINK_SAT); }, TLE_MAX_AGE_MS);
 initSat(ISS_SAT);
 initSat(SWIFT_SAT);
+initSat(LINK_SAT);
 
 tick();
 setInterval(tick, 1000);
