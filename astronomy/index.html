@@ -93,6 +93,7 @@
   .sub { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 4px; }
   td.below-txt, .below-txt { color: var(--muted); }
   .alt-sub { font-size: 0.72rem; color: var(--muted); opacity: 0.8; }
+  .sat-dist { font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: 8px; opacity: 0.8; }
   .badge-in {
     display: inline-block; padding: 1px 8px; border-radius: 10px;
     background: rgba(255, 212, 121, 0.18); border: 1px solid rgba(255, 212, 121, 0.5);
@@ -186,6 +187,7 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
+      <div id="sat-dist" class="sat-dist" style="display:none"></div>
     </div>
 
     <div class="passes" id="passes"></div>
@@ -736,6 +738,19 @@ function tick() {
     }
   }
   document.getElementById("rows").innerHTML = rowsHtml;
+
+  if (SWIFT_SAT.tle && LINK_SAT.tle) {
+    const sp = satAzEl(SWIFT_SAT.tle, now.getTime());
+    const lp = satAzEl(LINK_SAT.tle, now.getTime());
+    const dist = Math.round(Math.sqrt(
+      (sp.eci[0]-lp.eci[0])**2 + (sp.eci[1]-lp.eci[1])**2 + (sp.eci[2]-lp.eci[2])**2
+    ));
+    document.getElementById("sat-dist").textContent = `🔭 Swift ↔ 🔗 LINK: ${dist.toLocaleString()} km apart`;
+    document.getElementById("sat-dist").style.display = "";
+  } else {
+    document.getElementById("sat-dist").style.display = "none";
+  }
+
   updateSky(sunPos.el);
 
   // Satellite markers in sky strip
@@ -876,7 +891,7 @@ function satAzEl(tle, tMs) {
   const Z  =  cLat*cLon*dx + cLat*sLon*dy + sLat*dz;
   const rng = Math.sqrt(dx*dx + dy*dy + dz*dz);
   const alt = a * (1 - ecc * Math.cos(E)) - RE;
-  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt };
+  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt, eci: [xeci, yeci, zeci] };
 }
 
 const SAT_DAYS = 3;
