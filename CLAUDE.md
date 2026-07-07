@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sun, Moon, and planet ephemeris for **Nice, France** — current date/time plus
 azimuth, elevation, rise/set, and an observation-window readout for the Sun,
-Moon, Mercury, Venus, Jupiter, Saturn, and Mars.
+Moon, Mercury, Venus, Jupiter, Saturn, and Mars. Plus live satellite tracking
+for ISS, Swift Observatory, and LINK.
 
 ## Layout
 
@@ -32,9 +33,9 @@ observation window must be applied to **both** files, and the two must produce
 identical numbers for the same instant. This parity is the core invariant of the
 project — don't change one without the other.
 
-**Exception: ISS pass prediction is web-only.** The ISS panel in `index.html`
-fetches a live TLE from CelesTrak and predicts passes using a Keplerian + J2
-propagator. There is no Python equivalent — do not add one.
+**Exception: satellite tracking is web-only.** ISS, Swift, and LINK require live
+TLE data from CelesTrak — network-dependent features have no Python equivalent.
+Do not add one.
 
 ## How to run
 
@@ -60,17 +61,25 @@ Both are intentionally **dependency-free**. Keep them that way.
   (0–16°); a body is "in window" when both hold (`in_window`). `next_window_pass`
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
-- **ISS (web-only):** `fetchISSTLE` fetches the live TLE from
-  `celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE` on load and
-  hourly. `issAzEl` propagates with Keplerian motion + J2 secular drift of RAAN
-  and argument of perigee. ISS appears as a row in the body table (live az/el,
-  next rise/set from `computeISSRiseSet`, window flag) and as a 🛰️ marker in
-  the sky strip when above the horizon. `findISSPasses` scans 3 days ahead
-  (30 s step, bisection-refined) for passes with max elevation ≥ 10°, shown in
-  a dedicated panel with start → end time, peak elevation, azimuth, duration,
-  and 🪟 if in window. Rise/set cache refreshes every minute; pass list every
-  hour.
-- Location is `LATITUDE`/`LONGITUDE` (Nice); display timezone is `Europe/Paris`.
+- **Satellites (web-only):** Three satellites are tracked: ISS (NORAD 25544, 🛰️),
+  Swift Observatory (28485, 🔭), and LINK (69793, 🔗). Each is a config object
+  `{ norad, name, sym, cacheKey, minEl, tle, rs }` in `ALL_SATS`. Key functions:
+  - `satAzEl(tle, tMs)` — Keplerian + J2 propagator; returns `{az, el, alt, eci}`.
+  - `findSatPasses(sat)` — scans `SAT_DAYS` (3) ahead in `SAT_STEP` (30 s) steps,
+    bisection-refined; returns up to 5 passes with `{start, end, maxEl, maxAz, win}`.
+  - `computeSatRiseSet(sat)` — finds next rise/set within 3 days; refreshed every minute.
+  - `fetchAllTLEs()` — fires 3 parallel fetches via `Promise.all`; saves each to
+    `localStorage` on success. On failure, falls back to `loadAllCaches()`.
+  - `initAllSats()` — on startup, uses cache if all entries are < 6 hours old;
+    otherwise fetches fresh. Auto-refresh every 6 hours.
+  - Each satellite appears as a row in the body table (live az/el, altitude sub-label
+    via `.alt-sub`, next rise/set), a marker in the sky strip when above the horizon,
+    and a dedicated pass panel. A `🔭 Swift ↔ 🔗 LINK: N km apart` distance line
+    appears below the table, updated every second from ECI position vectors.
+  - TLE URL: `celestrak.org/NORAD/elements/gp.php?CATNR={norad}&FORMAT=TLE`.
+    **CelesTrak blocks IPs for excessive requests.** Always test API calls with
+    `curl` before implementing. The 6-hour cache exists specifically to avoid bans.
+- Location is `LAT`/`LON` (Nice, 43.6808°N 7.2123°E); display timezone is `Europe/Paris`.
   The web app formats Paris time/locale via `Intl` regardless of the viewer.
 
 Angles: azimuth is degrees clockwise from true north; elevation is degrees above
@@ -83,16 +92,21 @@ is `sky-v1` — bump it in `sw.js` whenever cached assets change.
 
 ## Conventions
 
-- **Verify numerically, don't assume.** Established practice in this repo is to
-  cross-check the JS port against the Python output at a fixed instant (run the
-  script body in `node` with the `<script>` extracted), and to sanity-check the
-  astronomy against known sky geometry (e.g. Venus must stay within ~47° of the
-  Sun; Saturn was the only body threading the window). Do this after changes.
+- **Test before proposing.** Verify API calls with `curl`, run JS in `node`, and
+  sanity-check astronomy against known sky geometry before implementing or suggesting changes.
+- **Verify numerically.** Cross-check the JS port against the Python output at a
+  fixed instant (run the script body in `node` with the `<script>` extracted).
 - **Git:** non-trivial features go on a branch, merged into `main` with
-  `git merge --no-ff`; the branch is deleted after merging. Small follow-ups have
-  been committed directly to `main`. Commit messages end with the
-  `Co-Authored-By: Claude` trailer.
+  `git merge --no-ff`; the branch is deleted after merging. Small follow-ups
+  committed directly to `main`. Commit messages end with the `Co-Authored-By: Claude` trailer.
 - Output style: the CLI prints an aligned Unicode table; the web app mirrors it
-  with a table, a sky-strip visualization, a "next window pass" panel, and an
-  ISS pass panel (web-only, live TLE).
-- **Mobile layout (≤480px):** the Elong and Window columns are hidden; azimuth compass sub (`.az-sub`) is hidden. The table must fit the iPhone 16 Pro viewport (393px) without horizontal scroll — keep this constraint when adding columns.
+  with a table, a sky-strip visualization, a "next window pass" panel, satellite
+  pass panels, and a Swift↔LINK separation distance line.
+- **Mobile layout (≤480px):** the Elong and Window columns are hidden; azimuth
+  compass sub (`.az-sub`) is hidden; altitude sub (`.alt-sub`) is always visible.
+  The table must fit the iPhone 16 Pro viewport (393px) without horizontal scroll —
+  keep this constraint when adding columns.
+- **Adding a satellite:** add a config object to `ALL_SATS`, add a named
+  `refresh<Name>()` function, add a `<div class="passes" id="<name>-passes">` in
+  the HTML, and call `makeSatMarker()` for the sky strip. The panel id must be
+  `${sat.name.toLowerCase()}-passes`.
