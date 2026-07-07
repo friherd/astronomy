@@ -813,19 +813,29 @@ function loadTLECache(key) {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 
-async function fetchSatTLE(sat) {
+const ALL_SATS = [ISS_SAT, SWIFT_SAT, LINK_SAT];
+
+async function fetchAllTLEs() {
+  const norads = ALL_SATS.map(s => s.norad).join(",");
   const r = await fetch(
-    `https://celestrak.org/NORAD/elements/gp.php?CATNR=${sat.norad}&FORMAT=TLE`,
+    `https://celestrak.org/NORAD/elements/gp.php?CATNR=${norads}&FORMAT=TLE`,
     { cache: "no-cache" }
   );
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const txt = await r.text();
   const lines = txt.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length < 3 || !lines[1].startsWith("1 ") || !lines[2].startsWith("2 "))
-    throw new Error("Unexpected format");
-  const tle = [lines[0], lines[1], lines[2]];
-  saveTLECache(sat.cacheKey, tle);
-  return tle;
+  const ts = Date.now();
+  // Parse chunks of 3 lines; match to sat by NORAD ID in line 1 (cols 2-7)
+  for (let i = 0; i + 2 < lines.length; i += 3) {
+    const norad = parseInt(lines[i + 1].substring(2, 7), 10);
+    const sat = ALL_SATS.find(s => s.norad === norad);
+    if (sat) {
+      sat.tle = [lines[i], lines[i + 1], lines[i + 2]];
+      saveTLECache(sat.cacheKey, sat.tle);
+      computeSatRiseSet(sat);
+      renderSatPasses(sat, ts);
+    }
+  }
 }
 
 function tleEpoch(line1) {
@@ -991,50 +1001,55 @@ function computeSatRiseSet(sat) {
 
 const TLE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-function useCachedSatTLE(sat) {
-  const cached = loadTLECache(sat.cacheKey);
-  if (cached) {
-    sat.tle = cached.tle;
-    computeSatRiseSet(sat);
-    renderSatPasses(sat, cached.ts);
-    console.warn(`${sat.name} TLE fetch failed — using cached data from`, new Date(cached.ts));
-  } else {
-    document.getElementById(`${sat.name.toLowerCase()}-passes`).innerHTML =
-      `<h3>${sat.sym} ${sat.name} passes</h3><div class="passrow none">Could not load TLE — connect and try again.</div>`;
+function loadAllCaches() {
+  for (const sat of ALL_SATS) {
+    const cached = loadTLECache(sat.cacheKey);
+    if (cached) {
+      sat.tle = cached.tle;
+      computeSatRiseSet(sat);
+      renderSatPasses(sat, cached.ts);
+      console.warn(`${sat.name} TLE fetch failed — using cached data from`, new Date(cached.ts));
+    } else {
+      document.getElementById(`${sat.name.toLowerCase()}-passes`).innerHTML =
+        `<h3>${sat.sym} ${sat.name} passes</h3><div class="passrow none">Could not load TLE — connect and try again.</div>`;
+    }
   }
 }
 
-function refreshSat(sat) {
-  const srcEl = document.querySelector(`#${sat.name.toLowerCase()}-passes .iss-src`);
-  if (srcEl) srcEl.textContent = "Fetching…";
-  fetchSatTLE(sat)
-    .then(tle => { sat.tle = tle; computeSatRiseSet(sat); renderSatPasses(sat, Date.now()); })
-    .catch(err => { console.error(`${sat.name} TLE fetch failed:`, err); useCachedSatTLE(sat); });
+function refreshAllSats() {
+  for (const sat of ALL_SATS) {
+    const srcEl = document.querySelector(`#${sat.name.toLowerCase()}-passes .iss-src`);
+    if (srcEl) srcEl.textContent = "Fetching…";
+  }
+  fetchAllTLEs()
+    .catch(err => { console.error("TLE fetch failed:", err); loadAllCaches(); });
 }
 
-function refreshISS()   { refreshSat(ISS_SAT); }
-function refreshSwift() { refreshSat(SWIFT_SAT); }
-function refreshLINK()  { refreshSat(LINK_SAT); }
+function refreshISS()   { refreshAllSats(); }
+function refreshSwift() { refreshAllSats(); }
+function refreshLINK()  { refreshAllSats(); }
 
-function initSat(sat) {
-  const cached = loadTLECache(sat.cacheKey);
-  const cacheAge = cached ? Date.now() - cached.ts : Infinity;
-  if (cached && cacheAge < TLE_MAX_AGE_MS) {
-    sat.tle = cached.tle;
-    computeSatRiseSet(sat);
-    renderSatPasses(sat, cached.ts);
+function initAllSats() {
+  const anyStale = ALL_SATS.some(sat => {
+    const cached = loadTLECache(sat.cacheKey);
+    return !cached || Date.now() - cached.ts >= TLE_MAX_AGE_MS;
+  });
+  if (anyStale) {
+    fetchAllTLEs()
+      .catch(err => { console.error("TLE fetch failed:", err); loadAllCaches(); });
   } else {
-    fetchSatTLE(sat)
-      .then(tle => { sat.tle = tle; computeSatRiseSet(sat); renderSatPasses(sat, Date.now()); })
-      .catch(err => { console.error(`${sat.name} TLE fetch failed:`, err); useCachedSatTLE(sat); });
+    for (const sat of ALL_SATS) {
+      const cached = loadTLECache(sat.cacheKey);
+      sat.tle = cached.tle;
+      computeSatRiseSet(sat);
+      renderSatPasses(sat, cached.ts);
+    }
   }
 }
 
-setInterval(() => { computeSatRiseSet(ISS_SAT); computeSatRiseSet(SWIFT_SAT); computeSatRiseSet(LINK_SAT); }, 60 * 1000);
-setInterval(() => { refreshSat(ISS_SAT); refreshSat(SWIFT_SAT); refreshSat(LINK_SAT); }, TLE_MAX_AGE_MS);
-initSat(ISS_SAT);
-initSat(SWIFT_SAT);
-initSat(LINK_SAT);
+setInterval(() => ALL_SATS.forEach(computeSatRiseSet), 60 * 1000);
+setInterval(refreshAllSats, TLE_MAX_AGE_MS);
+initAllSats();
 
 tick();
 setInterval(tick, 1000);
