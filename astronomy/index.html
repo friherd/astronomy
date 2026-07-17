@@ -94,6 +94,12 @@
   td.below-txt, .below-txt { color: var(--muted); }
   .alt-sub { font-size: 0.72rem; color: var(--muted); opacity: 0.8; }
   .sat-dist { font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: 8px; opacity: 0.8; }
+  .geo-section { margin-top: 22px; }
+  .geo-title {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--muted); font-weight: 600; margin-bottom: 2px;
+  }
+  table.bodies.geo { margin-top: 8px; }
   .badge-in {
     display: inline-block; padding: 1px 8px; border-radius: 10px;
     background: rgba(255, 212, 121, 0.18); border: 1px solid rgba(255, 212, 121, 0.5);
@@ -145,9 +151,9 @@
     .sub { margin-left: 3px; font-size: 0.72rem; }
     .el-state { display: none; }   /* "up"/"down" redundant on narrow screens */
     .az-sub { display: none; }     /* drop compass direction to save width */
-    /* Drop Elong and Window columns on narrow screens. */
-    table.bodies th:nth-child(4), table.bodies td:nth-child(4) { display: none; }
-    table.bodies th:nth-child(7), table.bodies td:nth-child(7) { display: none; }
+    /* Drop Elong and Window columns on narrow screens (main table only). */
+    table.bodies:not(.geo) th:nth-child(4), table.bodies:not(.geo) td:nth-child(4) { display: none; }
+    table.bodies:not(.geo) th:nth-child(7), table.bodies:not(.geo) td:nth-child(7) { display: none; }
     .badge-in { padding: 1px 6px; font-size: 0.72rem; }
 
     .passes h3 { font-size: 0.64rem; }
@@ -188,6 +194,23 @@
         <tbody id="rows"></tbody>
       </table>
       <div id="sat-dist" class="sat-dist" style="display:none"></div>
+    </div>
+
+    <div class="geo-section">
+      <h3 class="geo-title">Sub-satellite ground point</h3>
+      <div class="table-wrap">
+        <table class="bodies geo">
+          <thead>
+            <tr>
+              <th>Satellite</th>
+              <th class="num">Latitude</th>
+              <th class="num">Longitude</th>
+              <th class="num">Altitude</th>
+            </tr>
+          </thead>
+          <tbody id="geo-rows"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="passes" id="passes"></div>
@@ -721,6 +744,7 @@ function tick() {
     markers[b.name].classList.toggle("in-window", win);
     placeMarker(markers[b.name], pos);
   }
+  let geoHtml = "";
   for (const sat of [ISS_SAT, SWIFT_SAT, LINK_SAT]) {
     if (sat.tle) {
       const sp = satAzEl(sat.tle, now.getTime());
@@ -735,9 +759,18 @@ function tick() {
         <td class="num">${fmtTime(sat.rs.set)}</td>
         <td class="num">${win ? '<span class="badge-in">IN</span>' : '<span class="badge-out">·</span>'}</td>
       </tr>`;
+      const latH = sp.subLat >= 0 ? "N" : "S";
+      const lonH = sp.subLon >= 0 ? "E" : "W";
+      geoHtml += `<tr>
+        <td><span class="bodyname"><span class="sym">${sat.sym}</span><span class="bname">${sat.name}</span></span></td>
+        <td class="num">${Math.abs(sp.subLat).toFixed(2)}° ${latH}</td>
+        <td class="num">${Math.abs(sp.subLon).toFixed(2)}° ${lonH}</td>
+        <td class="num">${Math.round(sp.alt).toLocaleString()} km</td>
+      </tr>`;
     }
   }
   document.getElementById("rows").innerHTML = rowsHtml;
+  document.getElementById("geo-rows").innerHTML = geoHtml;
 
   if (SWIFT_SAT.tle && LINK_SAT.tle) {
     const sp = satAzEl(SWIFT_SAT.tle, now.getTime());
@@ -901,7 +934,10 @@ function satAzEl(tle, tMs) {
   const Z  =  cLat*cLon*dx + cLat*sLon*dy + sLat*dz;
   const rng = Math.sqrt(dx*dx + dy*dy + dz*dz);
   const alt = a * (1 - ecc * Math.cos(E)) - RE;
-  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt, eci: [xeci, yeci, zeci] };
+  // Sub-satellite ground point (geocentric)
+  const subLat = Math.atan2(zef, Math.sqrt(xef*xef + yef*yef)) * DEG;
+  const subLon = Math.atan2(yef, xef) * DEG;
+  return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt, subLat, subLon, eci: [xeci, yeci, zeci] };
 }
 
 const SAT_DAYS = 3;
