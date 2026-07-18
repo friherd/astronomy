@@ -93,7 +93,15 @@
   .sub { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 4px; }
   td.below-txt, .below-txt { color: var(--muted); }
   .alt-sub { font-size: 0.72rem; color: var(--muted); opacity: 0.8; }
-  .sat-dist { font-size: 0.78rem; color: var(--muted); text-align: center; margin-top: 8px; opacity: 0.8; }
+  .rdv-panel { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+  .rdv-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; margin-bottom: 8px; text-align: center; }
+  .rdv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px 10px; }
+  .rdv-cell { display: flex; flex-direction: column; gap: 2px; }
+  .rdv-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); opacity: 0.8; }
+  .rdv-val { font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .rdv-closing { color: #2fbf6f; }
+  .rdv-opening { color: #d98a3a; }
+  .rdv-note { font-size: 0.64rem; color: var(--muted); opacity: 0.75; margin-top: 8px; text-align: center; }
   .geo-section { margin-top: 22px; }
   .geo-title {
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
@@ -193,7 +201,18 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
-      <div id="sat-dist" class="sat-dist" style="display:none"></div>
+      <div id="rdv" class="rdv-panel" style="display:none">
+        <div class="rdv-title">🔭 Swift ↔ 🔗 LINK rendezvous</div>
+        <div class="rdv-grid">
+          <div class="rdv-cell"><span class="rdv-lbl">Range</span><span class="rdv-val" id="rdv-range">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Range rate</span><span class="rdv-val" id="rdv-rate">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Altitude gap</span><span class="rdv-val" id="rdv-altgap">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Phase (along-track)</span><span class="rdv-val" id="rdv-phase">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Plane angle</span><span class="rdv-val" id="rdv-plane">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Closest today</span><span class="rdv-val" id="rdv-closest">—</span></div>
+        </div>
+        <div class="rdv-note">Live values track natural orbital motion; real approach progress shows across TLE updates (every 6&nbsp;h).</div>
+      </div>
     </div>
 
     <div class="geo-section">
@@ -773,15 +792,51 @@ function tick() {
   document.getElementById("geo-rows").innerHTML = geoHtml;
 
   if (SWIFT_SAT.tle && LINK_SAT.tle) {
-    const sp = satAzEl(SWIFT_SAT.tle, now.getTime());
-    const lp = satAzEl(LINK_SAT.tle, now.getTime());
-    const dist = Math.round(Math.sqrt(
-      (sp.eci[0]-lp.eci[0])**2 + (sp.eci[1]-lp.eci[1])**2 + (sp.eci[2]-lp.eci[2])**2
-    ));
-    document.getElementById("sat-dist").textContent = `🔭 Swift ↔ 🔗 LINK: ${dist.toLocaleString()} km apart`;
-    document.getElementById("sat-dist").style.display = "";
+    const tNow = now.getTime(), dtS = 1; // 1-second finite-difference step
+    const sp  = satAzEl(SWIFT_SAT.tle, tNow),        lp  = satAzEl(LINK_SAT.tle, tNow);
+    const sp2 = satAzEl(SWIFT_SAT.tle, tNow + dtS*1000), lp2 = satAzEl(LINK_SAT.tle, tNow + dtS*1000);
+    const rS = sp.eci, rL = lp.eci, rS2 = sp2.eci, rL2 = lp2.eci;
+
+    const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    const nrm = a => Math.hypot(a[0],a[1],a[2]);
+    const sub = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+    const crs = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+
+    // Velocities (km/s) via finite difference of ECI position
+    const vS = sub(rS2, rS).map(x => x/dtS), vL = sub(rL2, rL).map(x => x/dtS);
+
+    // Range and range rate (negative = closing)
+    const range  = nrm(sub(rL, rS));
+    const range2 = nrm(sub(rL2, rS2));
+    const rangeRate = (range2 - range) / dtS;
+
+    // Altitude gap
+    const altGap = Math.abs(sp.alt - lp.alt);
+
+    // Along-track phase (central angle) → lead/lag time using Swift's period (vis-viva)
+    const phaseDeg = Math.acos(Math.max(-1, Math.min(1, dot(rS,rL)/(nrm(rS)*nrm(rL))))) * DEG;
+    const eps = nrm(vS)**2/2 - MU_E/nrm(rS);
+    const aS = -MU_E/(2*eps);
+    const periodMin = 2*Math.PI*Math.sqrt(aS**3/MU_E)/60;
+    const phaseMin = phaseDeg/360 * periodMin;
+    const leads = dot(sub(rL,rS), vS) > 0; // LINK ahead in the direction of motion
+
+    // Angle between the two orbital planes (from orbit normals)
+    const planeDeg = Math.acos(Math.max(-1, Math.min(1,
+      dot(crs(rS,vS), crs(rL,vL)) / (nrm(crs(rS,vS)) * nrm(crs(rL,vL)))))) * DEG;
+
+    const closing = rangeRate < 0;
+    document.getElementById("rdv-range").textContent  = `${Math.round(range).toLocaleString()} km`;
+    const rateEl = document.getElementById("rdv-rate");
+    rateEl.textContent = `${closing ? "▼" : "▲"} ${Math.abs(rangeRate).toFixed(3)} km/s`;
+    rateEl.className = "rdv-val " + (closing ? "rdv-closing" : "rdv-opening");
+    document.getElementById("rdv-altgap").textContent = `${altGap.toFixed(1)} km`;
+    document.getElementById("rdv-phase").textContent  = `${leads ? "lead" : "lag"} ${phaseDeg.toFixed(2)}° · ${phaseMin.toFixed(1)} min`;
+    document.getElementById("rdv-plane").textContent  = `${planeDeg.toFixed(3)}°`;
+    document.getElementById("rdv-closest").textContent = updateClosest(range, now);
+    document.getElementById("rdv").style.display = "";
   } else {
-    document.getElementById("sat-dist").style.display = "none";
+    document.getElementById("rdv").style.display = "none";
   }
 
   updateSky(sunPos.el);
@@ -938,6 +993,23 @@ function satAzEl(tle, tMs) {
   const subLat = Math.atan2(zef, Math.sqrt(xef*xef + yef*yef)) * DEG;
   const subLon = Math.atan2(yef, xef) * DEG;
   return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt, subLat, subLon, eci: [xeci, yeci, zeci] };
+}
+
+// Track the minimum Swift↔LINK range per Paris day; carry yesterday's for comparison.
+function updateClosest(rangeKm, nowDate) {
+  const today = nowDate.toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+  let cur = null, prev = null;
+  try { cur  = JSON.parse(localStorage.getItem("rdv_min_today") || "null"); } catch {}
+  try { prev = JSON.parse(localStorage.getItem("rdv_min_prev")  || "null"); } catch {}
+  if (!cur || cur.date !== today) {
+    if (cur) { prev = cur; localStorage.setItem("rdv_min_prev", JSON.stringify(prev)); }
+    cur = { date: today, km: rangeKm };
+  } else if (rangeKm < cur.km) {
+    cur.km = rangeKm;
+  }
+  localStorage.setItem("rdv_min_today", JSON.stringify(cur));
+  const txt = `${Math.round(cur.km).toLocaleString()} km`;
+  return prev ? `${txt} · prev ${Math.round(prev.km).toLocaleString()}` : txt;
 }
 
 const SAT_DAYS = 3;
