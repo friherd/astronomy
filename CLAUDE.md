@@ -57,7 +57,7 @@ project is web-only going forward — there is no parity requirement.)
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
 - **Satellites:** Three satellites are tracked: ISS (NORAD 25544, 🛰️),
-  Swift Observatory (28485, 🔭), and LINK (69793, 🔗). Each is a config object
+  Swift Observatory (28485, 🔭), and LINK (69792, 🔗). Each is a config object
   `{ norad, name, sym, cacheKey, minEl, tle, rs }` in `ALL_SATS`. Key functions:
   - `satAzEl(tle, tMs)` — Keplerian + J2 propagator; returns
     `{az, el, alt, subLat, subLon, eci}`. `subLat`/`subLon` are the geocentric
