@@ -74,8 +74,15 @@ project is web-only going forward — there is no parity requirement.)
     via `.alt-sub`, next rise/set), a row in the **sub-satellite ground point** table
     (geocentric lat/lon + altitude; `#geo-rows` in the `.geo-section`), a marker in
     the sky strip when above the horizon, and a dedicated pass panel. A
-    `🔭 Swift ↔ 🔗 LINK: N km apart` distance line appears below the main table,
-    updated every second from ECI position vectors.
+    **Swift ↔ LINK rendezvous** panel (`#rdv`) appears below the main table,
+    updated every second from ECI position vectors: range, range rate
+    (closing/opening), altitude gap, along-track phase (lead/lag in ° and
+    minutes), inter-plane angle, and the per-day closest-approach minimum
+    (persisted to `localStorage` as `rdv_min_today`/`rdv_min_prev`). Velocities
+    are finite-differenced from position at t and t+1 s; orbit normals give the
+    plane angle; Swift's period comes from vis-viva. `updateClosest()` tracks the
+    daily minimum. Note: between TLE refreshes these track natural orbital motion,
+    not maneuver progress — the daily-minimum trend is the true rendezvous signal.
   - **TLE source:** `https://tle.ivanstanojevic.me/api/tle/{norad}`. Returns JSON
     (`{name, line1, line2}`) with CORS enabled, so the browser fetches directly.
     This replaced CelesTrak, which was dropped because it firewalled the developer's
@@ -106,7 +113,7 @@ is `sky-v1` — bump it in `sw.js` whenever cached assets change.
   committed directly to `main`. Commit messages end with the `Co-Authored-By: Claude` trailer.
 - Output style: a table, a sky-strip visualization, a "next window pass" panel,
   a sub-satellite ground-point table, satellite pass panels, and a Swift↔LINK
-  separation distance line.
+  rendezvous panel.
 - **Mobile layout (≤480px):** in the main body table the Elong and Window columns
   are hidden and the azimuth compass sub (`.az-sub`) is hidden; the altitude sub
   (`.alt-sub`) is always visible. The column-hiding rules are scoped
