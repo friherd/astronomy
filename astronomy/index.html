@@ -837,7 +837,7 @@ const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
 // --- Satellite config objects ---
 const ISS_SAT   = { norad: 25544, name: "ISS",   sym: "🛰️", cacheKey: "iss_tle_cache",   minEl: 10, tle: null, rs: { rise: null, set: null } };
 const SWIFT_SAT = { norad: 28485, name: "Swift",  sym: "🔭", cacheKey: "swift_tle_cache", minEl: 0,  tle: null, rs: { rise: null, set: null } };
-const LINK_SAT  = { norad: 69793, name: "LINK",   sym: "🔗", cacheKey: "link_tle_cache",  minEl: 0,  tle: null, rs: { rise: null, set: null } };
+const LINK_SAT  = { norad: 69792, name: "LINK",   sym: "🔗", cacheKey: "link_tle_cache",  minEl: 0,  tle: null, rs: { rise: null, set: null } };
 
 function saveTLECache(key, tle) {
   try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now() })); } catch (e) {}
