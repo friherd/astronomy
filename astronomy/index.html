@@ -129,6 +129,7 @@
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
   .iss-in-window { background: rgba(255, 212, 121, 0.07); border-radius: 6px; }
   .iss-src { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .iss-epoch { font-size: 0.72rem; color: var(--muted); opacity: 0.6; margin-top: -3px; margin-bottom: 6px; }
   .iss-refresh { font-size: 0.72rem; color: var(--accent); background: none; border: 1px solid rgba(255,212,121,0.4); border-radius: 6px; padding: 1px 8px; cursor: pointer; opacity: 0.85; }
   .iss-refresh:hover { opacity: 1; }
 
@@ -1059,9 +1060,20 @@ function renderSatPasses(sat, fetchedAt) {
   const ageTxt = ageMin < 2 ? "just now" : ageMin < 60 ? `${ageMin} min ago` : `${Math.round(ageMin/60)} hr ago`;
   const stale = ageMin > 90 ? " ⚠️" : "";
   const src = `TLE fetched ${stamp} (${ageTxt})${stale}`;
+  // TLE epoch — when the orbit solution is valid for (distinct from fetch time)
+  const epoch = tleEpoch(sat.tle[1]);
+  const epochStamp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(epoch).replace(", ", " ");
+  const epochAgeMin = Math.round((Date.now() - epoch.getTime()) / 60000);
+  const epochAgeTxt = epochAgeMin < 60 ? `${epochAgeMin} min old`
+    : epochAgeMin < 2880 ? `${Math.round(epochAgeMin / 60)} h old`
+    : `${Math.round(epochAgeMin / 1440)} days old`;
+  const epochSrc = `TLE epoch ${epochStamp} (${epochAgeTxt})`;
   const refreshFn = `refresh${sat.name.replace(/\s+/g,"")}()`;
   const passes = findSatPasses(sat);
-  let html = `<h3>${sat.sym} ${sat.name} passes · next ${SAT_DAYS} days · max el ≥ ${sat.minEl}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="${refreshFn}">↻ Refresh</button></div>`;
+  let html = `<h3>${sat.sym} ${sat.name} passes · next ${SAT_DAYS} days · max el ≥ ${sat.minEl}°</h3><div class="iss-src">${src}<button class="iss-refresh" onclick="${refreshFn}">↻ Refresh</button></div><div class="iss-epoch">${epochSrc}</div>`;
   if (!passes.length) {
     html += `<div class="passrow none"><span>No passes ≥ ${sat.minEl}° in ${SAT_DAYS} days</span></div>`;
   } else {
