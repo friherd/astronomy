@@ -102,6 +102,15 @@
   .rdv-closing { color: #2fbf6f; }
   .rdv-opening { color: #d98a3a; }
   .rdv-note { font-size: 0.64rem; color: var(--muted); opacity: 0.75; margin-top: 8px; text-align: center; }
+  .rdv-orbit { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.74rem; }
+  .rdv-orbit th { text-align: right; font-weight: 600; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 4px; }
+  .rdv-orbit th:first-child { text-align: left; }
+  .rdv-orbit td { text-align: right; padding: 2px 4px; font-variant-numeric: tabular-nums; }
+  .rdv-orbit td:first-child { text-align: left; white-space: nowrap; }
+  .rdv-trend { margin-top: 12px; display: flex; flex-direction: column; gap: 3px; }
+  .rdv-trend-line { display: flex; align-items: baseline; gap: 8px; }
+  .rdv-spark { font-size: 0.95rem; letter-spacing: 1px; color: var(--accent); font-family: ui-monospace, monospace; }
+  .rdv-trend-txt { font-size: 0.66rem; color: var(--muted); }
   .geo-section { margin-top: 22px; }
   .geo-title {
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
@@ -210,7 +219,19 @@
           <div class="rdv-cell"><span class="rdv-lbl">Altitude gap</span><span class="rdv-val" id="rdv-altgap">—</span></div>
           <div class="rdv-cell"><span class="rdv-lbl">Phase (along-track)</span><span class="rdv-val" id="rdv-phase">—</span></div>
           <div class="rdv-cell"><span class="rdv-lbl">Plane angle</span><span class="rdv-val" id="rdv-plane">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Closest today</span><span class="rdv-val" id="rdv-closest">—</span></div>
+          <div class="rdv-cell"><span class="rdv-lbl">Phasing drift</span><span class="rdv-val" id="rdv-drift">—</span></div>
+        </div>
+        <table class="rdv-orbit">
+          <thead><tr><th>Orbit shape</th><th>Perigee</th><th>Apogee</th><th>Ecc</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sym">🔭</span> Swift</td><td id="orb-sw-peri">—</td><td id="orb-sw-apo">—</td><td id="orb-sw-ecc">—</td></tr>
+            <tr><td><span class="sym">🔗</span> LINK</td><td id="orb-lk-peri">—</td><td id="orb-lk-apo">—</td><td id="orb-lk-ecc">—</td></tr>
+          </tbody>
+        </table>
+        <div class="rdv-trend">
+          <span class="rdv-lbl">Closest approach / day (daily minimum)</span>
+          <div class="rdv-trend-line"><span class="rdv-spark" id="rdv-spark">—</span><span class="rdv-val" id="rdv-closest">—</span></div>
+          <span class="rdv-trend-txt" id="rdv-trend-txt">—</span>
         </div>
         <div class="rdv-note">Live values track natural orbital motion; real approach progress shows across TLE updates (every 6&nbsp;h).</div>
       </div>
@@ -834,7 +855,22 @@ function tick() {
     document.getElementById("rdv-altgap").textContent = `${altGap.toFixed(1)} km`;
     document.getElementById("rdv-phase").textContent  = `${leads ? "lead" : "lag"} ${phaseDeg.toFixed(2)}° · ${phaseMin.toFixed(1)} min`;
     document.getElementById("rdv-plane").textContent  = `${planeDeg.toFixed(3)}°`;
-    document.getElementById("rdv-closest").textContent = updateClosest(range, now);
+
+    // Orbit shape (apogee/perigee/ecc) — watch LINK's apsides converge onto Swift's
+    const shS = orbitShape(SWIFT_SAT.tle), shL = orbitShape(LINK_SAT.tle);
+    document.getElementById("orb-sw-peri").textContent = `${shS.periKm.toFixed(1)} km`;
+    document.getElementById("orb-sw-apo").textContent  = `${shS.apoKm.toFixed(1)} km`;
+    document.getElementById("orb-sw-ecc").textContent  = shS.ecc.toFixed(5);
+    document.getElementById("orb-lk-peri").textContent = `${shL.periKm.toFixed(1)} km`;
+    document.getElementById("orb-lk-apo").textContent  = `${shL.apoKm.toFixed(1)} km`;
+    document.getElementById("orb-lk-ecc").textContent  = shL.ecc.toFixed(5);
+
+    // Phasing drift: LINK's along-track rate vs Swift (+ = LINK gaining/faster, − = trailing/slower)
+    const driftDeg = (shL.nRevDay - shS.nRevDay) * 360;
+    document.getElementById("rdv-drift").textContent = `LINK ${driftDeg >= 0 ? "+" : "−"}${Math.abs(driftDeg).toFixed(1)}°/day`;
+
+    // Daily closest-approach history + closing-trend sparkline
+    renderClosing(updateClosest(range, now));
     document.getElementById("rdv").style.display = "";
   } else {
     document.getElementById("rdv").style.display = "none";
@@ -997,20 +1033,56 @@ function satAzEl(tle, tMs) {
 }
 
 // Track the minimum Swift↔LINK range per Paris day; carry yesterday's for comparison.
+// Perigee/apogee altitude, eccentricity, period, and mean motion from a TLE.
+function orbitShape(tle) {
+  const l2 = tle[2];
+  const ecc = parseFloat("0." + l2.substring(26, 33).trim());
+  const nRevDay = parseFloat(l2.substring(52, 63));
+  const n = nRevDay * 2 * Math.PI / 86400;      // rad/s
+  const a = Math.cbrt(MU_E / (n * n));
+  return {
+    ecc, nRevDay,
+    periKm: a * (1 - ecc) - RE,
+    apoKm:  a * (1 + ecc) - RE,
+    periodMin: 2 * Math.PI / n / 60
+  };
+}
+
+const RDV_HIST_DAYS = 14;
+// Track the daily-minimum Swift↔LINK range in a rolling history (for the closing trend).
 function updateClosest(rangeKm, nowDate) {
   const today = nowDate.toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
-  let cur = null, prev = null;
-  try { cur  = JSON.parse(localStorage.getItem("rdv_min_today") || "null"); } catch {}
-  try { prev = JSON.parse(localStorage.getItem("rdv_min_prev")  || "null"); } catch {}
-  if (!cur || cur.date !== today) {
-    if (cur) { prev = cur; localStorage.setItem("rdv_min_prev", JSON.stringify(prev)); }
-    cur = { date: today, km: rangeKm };
-  } else if (rangeKm < cur.km) {
-    cur.km = rangeKm;
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem("rdv_min_hist") || "[]"); } catch {}
+  if (!Array.isArray(hist)) hist = [];
+  const last = hist[hist.length - 1];
+  if (last && last.date === today) {
+    if (rangeKm < last.km) last.km = rangeKm;
+  } else {
+    hist.push({ date: today, km: rangeKm });
   }
-  localStorage.setItem("rdv_min_today", JSON.stringify(cur));
-  const txt = `${Math.round(cur.km).toLocaleString()} km`;
-  return prev ? `${txt} · prev ${Math.round(prev.km).toLocaleString()}` : txt;
+  if (hist.length > RDV_HIST_DAYS) hist = hist.slice(-RDV_HIST_DAYS);
+  localStorage.setItem("rdv_min_hist", JSON.stringify(hist));
+  return hist;
+}
+
+// Render the daily-minimum history as a sparkline + trend text.
+function renderClosing(hist) {
+  const kms = hist.map(h => h.km);
+  document.getElementById("rdv-closest").textContent = `${Math.round(kms[kms.length - 1]).toLocaleString()} km today`;
+  const bars = "▁▂▃▄▅▆▇█";
+  const lo = Math.min(...kms), hi = Math.max(...kms);
+  document.getElementById("rdv-spark").textContent = kms.map(k =>
+    bars[hi === lo ? 0 : Math.round((k - lo) / (hi - lo) * (bars.length - 1))]).join("");
+  let txt;
+  if (kms.length >= 2) {
+    const first = kms[0], lastk = kms[kms.length - 1];
+    const arrow = lastk < first ? "↓ closing" : lastk > first ? "↑ opening" : "→ flat";
+    txt = `${Math.round(first).toLocaleString()} → ${Math.round(lastk).toLocaleString()} km  ${arrow} over ${kms.length} d`;
+  } else {
+    txt = "gathering daily data…";
+  }
+  document.getElementById("rdv-trend-txt").textContent = txt;
 }
 
 const SAT_DAYS = 3;

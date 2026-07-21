@@ -77,12 +77,17 @@ project is web-only going forward — there is no parity requirement.)
     **Swift ↔ LINK rendezvous** panel (`#rdv`) appears below the main table,
     updated every second from ECI position vectors: range, range rate
     (closing/opening), altitude gap, along-track phase (lead/lag in ° and
-    minutes), inter-plane angle, and the per-day closest-approach minimum
-    (persisted to `localStorage` as `rdv_min_today`/`rdv_min_prev`). Velocities
-    are finite-differenced from position at t and t+1 s; orbit normals give the
-    plane angle; Swift's period comes from vis-viva. `updateClosest()` tracks the
-    daily minimum. Note: between TLE refreshes these track natural orbital motion,
-    not maneuver progress — the daily-minimum trend is the true rendezvous signal.
+    minutes), inter-plane angle, and phasing drift (LINK's mean-motion advantage
+    over Swift, °/day — negative because LINK is the higher/slower one). Below the
+    metric grid: an **orbit-shape table** (`orbitShape()` → perigee/apogee alt +
+    eccentricity per satellite, so LINK's apsides can be watched converging onto
+    Swift's during braking/circularization) and a **closing-trend sparkline** — a
+    rolling 14-day history of the daily-minimum range (`updateClosest()` →
+    `renderClosing()`, persisted to `localStorage` as `rdv_min_hist`, an array of
+    `{date, km}`). Velocities are finite-differenced from position at t and t+1 s;
+    orbit normals give the plane angle; Swift's period comes from vis-viva. Note:
+    between TLE refreshes these track natural orbital motion, not maneuver progress
+    — the daily-minimum trend (sparkline) is the true rendezvous signal.
   - **TLE source:** `https://tle.ivanstanojevic.me/api/tle/{norad}`. Returns JSON
     (`{name, line1, line2}`) with CORS enabled, so the browser fetches directly.
     This replaced CelesTrak, which was dropped because it firewalled the developer's
