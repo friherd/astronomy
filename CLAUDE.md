@@ -90,9 +90,22 @@ project is web-only going forward — there is no parity requirement.)
     — the daily-minimum trend (sparkline) is the true rendezvous signal.
   - **TLE source:** `https://tle.ivanstanojevic.me/api/tle/{norad}`. Returns JSON
     (`{name, line1, line2}`) with CORS enabled, so the browser fetches directly.
-    This replaced CelesTrak, which was dropped because it firewalled the developer's
-    IP for excessive requests. Do **not** reintroduce a direct CelesTrak fetch.
-    The 6-hour cache limits request volume regardless.
+    This is a **daily** re-serve of CelesTrak data (which is itself Space-Track-derived),
+    so it can lag the authoritative catalog by 1–2 days, unevenly per object. It replaced
+    a direct CelesTrak fetch, which was dropped because CelesTrak firewalled the developer's
+    IP for excessive requests. Do **not** wire CelesTrak into any automatic/interval refresh.
+  - **CelesTrak manual pull (sanctioned exception):** a single global `⤓ Pull all from
+    CelesTrak` button (`#celestrak-pull` in the `.celestrak-bar` above the pass panels →
+    `pullAllFromCelesTrak()` → `fetchOneTLECelesTrak()` per sat) pulls all satellites straight
+    from `https://celestrak.org/NORAD/elements/gp.php?CATNR={norad}&FORMAT=tle` (CORS-enabled;
+    returns 3-line TLE, validated because CelesTrak returns HTTP 200 with an error body for
+    bad requests). This is intentional and user-approved for pulling fresh data directly when
+    the mirror is stale — but **manual only**: it fires only on click, has a 10-second
+    cooldown (`celestrakCooldownTs`), and is never wired into any automatic/interval refresh,
+    to avoid the request volume that caused the original firewall. TLEs carry a `source`
+    (`"mirror"`|`"CelesTrak"`) shown in the panel (`· via CelesTrak`) and cached in
+    `localStorage`; the 6-hour auto-refresh and the per-satellite `↻ Refresh` button still use
+    the mirror, so a CelesTrak pull is eventually overwritten by mirror data.
 - Location is `LAT`/`LON` (Nice, 43.6808°N 7.2123°E); display timezone is `Europe/Paris`.
   The web app formats Paris time/locale via `Intl` regardless of the viewer.
 

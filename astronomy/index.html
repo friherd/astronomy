@@ -137,10 +137,13 @@
   .passrow.none { color: var(--muted); opacity: 0.55; }
   footer { text-align: center; margin-top: 20px; font-size: 0.75rem; color: var(--muted); opacity: 0.7; }
   .iss-in-window { background: rgba(255, 212, 121, 0.07); border-radius: 6px; }
-  .iss-src { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .iss-src { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-bottom: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
   .iss-epoch { font-size: 0.72rem; color: var(--muted); opacity: 0.6; margin-top: -3px; margin-bottom: 6px; }
   .iss-refresh { font-size: 0.72rem; color: var(--accent); background: none; border: 1px solid rgba(255,212,121,0.4); border-radius: 6px; padding: 1px 8px; cursor: pointer; opacity: 0.85; }
   .iss-refresh:hover { opacity: 1; }
+  .iss-celestrak { color: #7fc7ff; border-color: rgba(127,199,255,0.45); }
+  .celestrak-bar { margin: 14px 0 2px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+  .celestrak-note { font-size: 0.66rem; color: var(--muted); opacity: 0.7; }
 
   /* Horizontal-scroll fallback so the 6-column table never breaks the layout. */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -255,6 +258,11 @@
     </div>
 
     <div class="passes" id="passes"></div>
+
+    <div class="celestrak-bar">
+      <button id="celestrak-pull" class="iss-refresh iss-celestrak" onclick="pullAllFromCelesTrak()">⤓ Pull all from CelesTrak</button>
+      <span class="celestrak-note">Manual, on-demand pull of all satellites straight from CelesTrak</span>
+    </div>
 
     <div class="passes" id="iss-passes">
       <h3>🛰️ ISS passes</h3>
@@ -931,8 +939,8 @@ const ISS_SAT   = { norad: 25544, name: "ISS",   sym: "🛰️", cacheKey: "iss_
 const SWIFT_SAT = { norad: 28485, name: "Swift",  sym: "🔭", cacheKey: "swift_tle_cache", minEl: 0,  tle: null, rs: { rise: null, set: null } };
 const LINK_SAT  = { norad: 69792, name: "LINK",   sym: "🔗", cacheKey: "link_tle_cache",  minEl: 0,  tle: null, rs: { rise: null, set: null } };
 
-function saveTLECache(key, tle) {
-  try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now() })); } catch (e) {}
+function saveTLECache(key, tle, source = "mirror") {
+  try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now(), source })); } catch (e) {}
 }
 function loadTLECache(key) {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; }
@@ -957,9 +965,49 @@ async function fetchAllTLEs() {
   results.forEach((tle, i) => {
     const sat = ALL_SATS[i];
     sat.tle = tle;
-    saveTLECache(sat.cacheKey, tle);
+    saveTLECache(sat.cacheKey, tle, "mirror");
     computeSatRiseSet(sat);
-    renderSatPasses(sat, ts);
+    renderSatPasses(sat, ts, "mirror");
+  });
+}
+
+// Manual, on-demand pull straight from CelesTrak (the authoritative-mirror source).
+// Deliberately NOT wired into any automatic/interval refresh — this exists so a single
+// satellite can be pulled directly and sparingly, without the request volume that once
+// got the developer's IP firewalled by CelesTrak. See CLAUDE.md.
+async function fetchOneTLECelesTrak(sat) {
+  const r = await fetch(
+    `https://celestrak.org/NORAD/elements/gp.php?CATNR=${sat.norad}&FORMAT=tle`,
+    { cache: "no-cache" }
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const lines = (await r.text()).trim().split(/\r?\n/).map(s => s.trimEnd());
+  // CelesTrak returns HTTP 200 with an error body for bad requests, so validate the lines.
+  if (lines.length < 3 || !/^1 /.test(lines[1]) || !/^2 /.test(lines[2])) {
+    throw new Error("Unexpected CelesTrak response");
+  }
+  return [lines[0].trim(), lines[1], lines[2]];
+}
+
+let celestrakCooldownTs = 0; // last-click time, to prevent accidental spamming
+function pullAllFromCelesTrak() {
+  const nowMs = Date.now();
+  if (nowMs - celestrakCooldownTs < 10000) return; // 10 s cooldown
+  celestrakCooldownTs = nowMs;
+  const btn = document.getElementById("celestrak-pull");
+  const orig = "⤓ Pull all from CelesTrak";
+  if (btn) { btn.textContent = "Fetching from CelesTrak…"; btn.disabled = true; }
+  Promise.allSettled(ALL_SATS.map(sat =>
+    fetchOneTLECelesTrak(sat).then(tle => {
+      sat.tle = tle;
+      saveTLECache(sat.cacheKey, tle, "CelesTrak");
+      computeSatRiseSet(sat);
+      renderSatPasses(sat, Date.now(), "CelesTrak");
+    })
+  )).then(results => {
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed) console.error(`CelesTrak: ${failed} satellite(s) failed`);
+    if (btn) { btn.textContent = failed ? `${failed} failed — retry` : orig; btn.disabled = false; }
   });
 }
 
@@ -1122,7 +1170,7 @@ function findSatPasses(sat) {
   return passes;
 }
 
-function renderSatPasses(sat, fetchedAt) {
+function renderSatPasses(sat, fetchedAt, source = "mirror") {
   const now = new Date();
   const stamp = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
@@ -1131,7 +1179,8 @@ function renderSatPasses(sat, fetchedAt) {
   const ageMin = Math.round((Date.now() - fetchedAt) / 60000);
   const ageTxt = ageMin < 2 ? "just now" : ageMin < 60 ? `${ageMin} min ago` : `${Math.round(ageMin/60)} hr ago`;
   const stale = ageMin > 90 ? " ⚠️" : "";
-  const src = `TLE fetched ${stamp} (${ageTxt})${stale}`;
+  const via = source === "CelesTrak" ? " · via CelesTrak" : "";
+  const src = `TLE fetched ${stamp} (${ageTxt})${stale}${via}`;
   // TLE epoch — when the orbit solution is valid for (distinct from fetch time)
   const epoch = tleEpoch(sat.tle[1]);
   const epochStamp = new Intl.DateTimeFormat("en-CA", {
@@ -1199,7 +1248,7 @@ function loadAllCaches() {
     if (cached) {
       sat.tle = cached.tle;
       computeSatRiseSet(sat);
-      renderSatPasses(sat, cached.ts);
+      renderSatPasses(sat, cached.ts, cached.source || "mirror");
       console.warn(`${sat.name} TLE fetch failed — using cached data from`, new Date(cached.ts));
     } else {
       document.getElementById(`${sat.name.toLowerCase()}-passes`).innerHTML =
@@ -1234,7 +1283,7 @@ function initAllSats() {
       const cached = loadTLECache(sat.cacheKey);
       sat.tle = cached.tle;
       computeSatRiseSet(sat);
-      renderSatPasses(sat, cached.ts);
+      renderSatPasses(sat, cached.ts, cached.source || "mirror");
     }
   }
 }
