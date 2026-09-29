@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Sun, Moon, and planet ephemeris for **Nice, France** — current date/time plus
 azimuth, elevation, rise/set, and an observation-window readout for the Sun,
 Moon, Mercury, Venus, Jupiter, Saturn, and Mars. Plus live satellite tracking
-for ISS, Swift Observatory, and LINK. Delivered as a single self-contained,
+for ISS and Swift Observatory. Delivered as a single self-contained,
 live-updating browser app (PWA).
 
 ## Layout
@@ -56,8 +56,8 @@ project is web-only going forward — there is no parity requirement.)
   (0–16°); a body is "in window" when both hold (`inWindowAt`). `nextWindowPass`
   finds the next entry/exit interval within `WINDOW_HORIZON` (7 days) via a coarse
   scan (`WINDOW_STEP`, 3 min) refined to ~1 s by bisection.
-- **Satellites:** Three satellites are tracked: ISS (NORAD 25544, 🛰️),
-  Swift Observatory (28485, 🔭), and LINK (69792, 🔗). Each is a config object
+- **Satellites:** Two satellites are tracked: ISS (NORAD 25544, 🛰️) and
+  Swift Observatory (28485, 🔭). Each is a config object
   `{ norad, name, sym, cacheKey, minEl, tle, rs }` in `ALL_SATS`. Key functions:
   - `satAzEl(tle, tMs)` — Keplerian + J2 propagator; returns
     `{az, el, alt, subLat, subLon, eci}`. `subLat`/`subLon` are the geocentric
@@ -65,7 +65,7 @@ project is web-only going forward — there is no parity requirement.)
   - `findSatPasses(sat)` — scans `SAT_DAYS` (3) ahead in `SAT_STEP` (30 s) steps,
     bisection-refined; returns up to 5 passes with `{start, end, maxEl, maxAz, win}`.
   - `computeSatRiseSet(sat)` — finds next rise/set within 3 days; refreshed every minute.
-  - `fetchAllTLEs()` — fires 3 parallel fetches via `Promise.all` (one per satellite,
+  - `fetchAllTLEs()` — fires parallel fetches via `Promise.all` (one per satellite,
     `fetchOneTLE`); saves each to `localStorage` on success. On failure, falls back
     to `loadAllCaches()`.
   - `initAllSats()` — on startup, uses cache if all entries are < 6 hours old;
@@ -74,20 +74,13 @@ project is web-only going forward — there is no parity requirement.)
     via `.alt-sub`, next rise/set), a row in the **sub-satellite ground point** table
     (geocentric lat/lon + altitude; `#geo-rows` in the `.geo-section`), a marker in
     the sky strip when above the horizon, and a dedicated pass panel. A
-    **Swift ↔ LINK rendezvous** panel (`#rdv`) appears below the main table,
-    updated every second from ECI position vectors: range, range rate
-    (closing/opening), altitude gap, along-track phase (lead/lag in ° and
-    minutes), inter-plane angle, and phasing drift (LINK's mean-motion advantage
-    over Swift, °/day — negative because LINK is the higher/slower one). Below the
-    metric grid: an **orbit-shape table** (`orbitShape()` → perigee/apogee alt +
-    eccentricity per satellite, so LINK's apsides can be watched converging onto
-    Swift's during braking/circularization) and a **closing-trend sparkline** — a
-    rolling 14-day history of the daily-minimum range (`updateClosest()` →
-    `renderClosing()`, persisted to `localStorage` as `rdv_min_hist`, an array of
-    `{date, km}`). Velocities are finite-differenced from position at t and t+1 s;
-    orbit normals give the plane angle; Swift's period comes from vis-viva. Note:
-    between TLE refreshes these track natural orbital motion, not maneuver progress
-    — the daily-minimum trend (sparkline) is the true rendezvous signal.
+    **Swift orbit** panel (`#rdv`) appears below the main table, showing Swift's
+    orbit shape from the current TLE via `orbitShape()` → perigee/apogee altitude
+    and eccentricity (`#orb-sw-peri`/`-apo`/`-ecc`). It renders whenever Swift has
+    a TLE. Note: these values only change when the TLE refreshes (every 6 h), not
+    continuously. (This panel was formerly a Swift↔LINK rendezvous readout; LINK
+    was deorbited and removed 2026-09-29 — recover the rendezvous code from git
+    history if a future co-orbiting target needs it.)
   - **TLE source:** `https://tle.ivanstanojevic.me/api/tle/{norad}`. Returns JSON
     (`{name, line1, line2}`) with CORS enabled, so the browser fetches directly.
     This is a **daily** re-serve of CelesTrak data (which is itself Space-Track-derived),
@@ -130,8 +123,8 @@ is `sky-v1` — bump it in `sw.js` whenever cached assets change.
   `git merge --no-ff`; the branch is deleted after merging. Small follow-ups
   committed directly to `main`. Commit messages end with the `Co-Authored-By: Claude` trailer.
 - Output style: a table, a sky-strip visualization, a "next window pass" panel,
-  a sub-satellite ground-point table, satellite pass panels, and a Swift↔LINK
-  rendezvous panel.
+  a sub-satellite ground-point table, satellite pass panels, and a Swift orbit
+  panel.
 - **Mobile layout (≤480px):** in the main body table the Elong and Window columns
   are hidden and the azimuth compass sub (`.az-sub`) is hidden; the altitude sub
   (`.alt-sub`) is always visible. The column-hiding rules are scoped
