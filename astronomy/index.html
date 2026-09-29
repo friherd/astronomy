@@ -95,22 +95,12 @@
   .alt-sub { font-size: 0.72rem; color: var(--muted); opacity: 0.8; }
   .rdv-panel { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
   .rdv-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; margin-bottom: 8px; text-align: center; }
-  .rdv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px 10px; }
-  .rdv-cell { display: flex; flex-direction: column; gap: 2px; }
-  .rdv-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); opacity: 0.8; }
-  .rdv-val { font-size: 0.82rem; font-variant-numeric: tabular-nums; }
-  .rdv-closing { color: #2fbf6f; }
-  .rdv-opening { color: #d98a3a; }
   .rdv-note { font-size: 0.64rem; color: var(--muted); opacity: 0.75; margin-top: 8px; text-align: center; }
   .rdv-orbit { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.74rem; }
   .rdv-orbit th { text-align: right; font-weight: 600; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 4px; }
   .rdv-orbit th:first-child { text-align: left; }
   .rdv-orbit td { text-align: right; padding: 2px 4px; font-variant-numeric: tabular-nums; }
   .rdv-orbit td:first-child { text-align: left; white-space: nowrap; }
-  .rdv-trend { margin-top: 12px; display: flex; flex-direction: column; gap: 3px; }
-  .rdv-trend-line { display: flex; align-items: baseline; gap: 8px; }
-  .rdv-spark { font-size: 0.95rem; letter-spacing: 1px; color: var(--accent); font-family: ui-monospace, monospace; }
-  .rdv-trend-txt { font-size: 0.66rem; color: var(--muted); }
   .geo-section { margin-top: 22px; }
   .geo-title {
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
@@ -215,28 +205,14 @@
         <tbody id="rows"></tbody>
       </table>
       <div id="rdv" class="rdv-panel" style="display:none">
-        <div class="rdv-title">🔭 Swift ↔ 🔗 LINK rendezvous</div>
-        <div class="rdv-grid">
-          <div class="rdv-cell"><span class="rdv-lbl">Range</span><span class="rdv-val" id="rdv-range">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Range rate</span><span class="rdv-val" id="rdv-rate">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Altitude gap</span><span class="rdv-val" id="rdv-altgap">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Phase (along-track)</span><span class="rdv-val" id="rdv-phase">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Plane angle</span><span class="rdv-val" id="rdv-plane">—</span></div>
-          <div class="rdv-cell"><span class="rdv-lbl">Phasing drift</span><span class="rdv-val" id="rdv-drift">—</span></div>
-        </div>
+        <div class="rdv-title">🔭 Swift orbit</div>
         <table class="rdv-orbit">
           <thead><tr><th>Orbit shape</th><th>Perigee</th><th>Apogee</th><th>Ecc</th></tr></thead>
           <tbody>
             <tr><td><span class="sym">🔭</span> Swift</td><td id="orb-sw-peri">—</td><td id="orb-sw-apo">—</td><td id="orb-sw-ecc">—</td></tr>
-            <tr><td><span class="sym">🔗</span> LINK</td><td id="orb-lk-peri">—</td><td id="orb-lk-apo">—</td><td id="orb-lk-ecc">—</td></tr>
           </tbody>
         </table>
-        <div class="rdv-trend">
-          <span class="rdv-lbl">Closest approach / day (daily minimum)</span>
-          <div class="rdv-trend-line"><span class="rdv-spark" id="rdv-spark">—</span><span class="rdv-val" id="rdv-closest">—</span></div>
-          <span class="rdv-trend-txt" id="rdv-trend-txt">—</span>
-        </div>
-        <div class="rdv-note">Live values track natural orbital motion; real approach progress shows across TLE updates (every 6&nbsp;h).</div>
+        <div class="rdv-note">Orbit shape updates across TLE refreshes (every 6&nbsp;h).</div>
       </div>
     </div>
 
@@ -271,11 +247,6 @@
 
     <div class="passes" id="swift-passes">
       <h3>🔭 Swift passes</h3>
-      <div class="passrow none">Loading…</div>
-    </div>
-
-    <div class="passes" id="link-passes">
-      <h3>🔗 Link passes</h3>
       <div class="passrow none">Loading…</div>
     </div>
 
@@ -721,7 +692,6 @@ function makeSatMarker(sym, title) {
 }
 const issMarker   = makeSatMarker("🛰️", "ISS");
 const swiftMarker = makeSatMarker("🔭", "Swift");
-const linkMarker  = makeSatMarker("🔗", "LINK");
 
 // Shade the observation window in the sky strip (azimuth across, elevation up).
 (function positionWindowZone() {
@@ -794,7 +764,7 @@ function tick() {
     placeMarker(markers[b.name], pos);
   }
   let geoHtml = "";
-  for (const sat of [ISS_SAT, SWIFT_SAT, LINK_SAT]) {
+  for (const sat of [ISS_SAT, SWIFT_SAT]) {
     if (sat.tle) {
       const sp = satAzEl(sat.tle, now.getTime());
       const up = sp.el > 0;
@@ -821,64 +791,12 @@ function tick() {
   document.getElementById("rows").innerHTML = rowsHtml;
   document.getElementById("geo-rows").innerHTML = geoHtml;
 
-  if (SWIFT_SAT.tle && LINK_SAT.tle) {
-    const tNow = now.getTime(), dtS = 1; // 1-second finite-difference step
-    const sp  = satAzEl(SWIFT_SAT.tle, tNow),        lp  = satAzEl(LINK_SAT.tle, tNow);
-    const sp2 = satAzEl(SWIFT_SAT.tle, tNow + dtS*1000), lp2 = satAzEl(LINK_SAT.tle, tNow + dtS*1000);
-    const rS = sp.eci, rL = lp.eci, rS2 = sp2.eci, rL2 = lp2.eci;
-
-    const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-    const nrm = a => Math.hypot(a[0],a[1],a[2]);
-    const sub = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
-    const crs = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-
-    // Velocities (km/s) via finite difference of ECI position
-    const vS = sub(rS2, rS).map(x => x/dtS), vL = sub(rL2, rL).map(x => x/dtS);
-
-    // Range and range rate (negative = closing)
-    const range  = nrm(sub(rL, rS));
-    const range2 = nrm(sub(rL2, rS2));
-    const rangeRate = (range2 - range) / dtS;
-
-    // Altitude gap
-    const altGap = Math.abs(sp.alt - lp.alt);
-
-    // Along-track phase (central angle) → lead/lag time using Swift's period (vis-viva)
-    const phaseDeg = Math.acos(Math.max(-1, Math.min(1, dot(rS,rL)/(nrm(rS)*nrm(rL))))) * DEG;
-    const eps = nrm(vS)**2/2 - MU_E/nrm(rS);
-    const aS = -MU_E/(2*eps);
-    const periodMin = 2*Math.PI*Math.sqrt(aS**3/MU_E)/60;
-    const phaseMin = phaseDeg/360 * periodMin;
-    const leads = dot(sub(rL,rS), vS) > 0; // LINK ahead in the direction of motion
-
-    // Angle between the two orbital planes (from orbit normals)
-    const planeDeg = Math.acos(Math.max(-1, Math.min(1,
-      dot(crs(rS,vS), crs(rL,vL)) / (nrm(crs(rS,vS)) * nrm(crs(rL,vL)))))) * DEG;
-
-    const closing = rangeRate < 0;
-    document.getElementById("rdv-range").textContent  = `${Math.round(range).toLocaleString()} km`;
-    const rateEl = document.getElementById("rdv-rate");
-    rateEl.textContent = `${closing ? "▼" : "▲"} ${Math.abs(rangeRate).toFixed(3)} km/s`;
-    rateEl.className = "rdv-val " + (closing ? "rdv-closing" : "rdv-opening");
-    document.getElementById("rdv-altgap").textContent = `${altGap.toFixed(1)} km`;
-    document.getElementById("rdv-phase").textContent  = `${leads ? "lead" : "lag"} ${phaseDeg.toFixed(2)}° · ${phaseMin.toFixed(1)} min`;
-    document.getElementById("rdv-plane").textContent  = `${planeDeg.toFixed(3)}°`;
-
-    // Orbit shape (apogee/perigee/ecc) — watch LINK's apsides converge onto Swift's
-    const shS = orbitShape(SWIFT_SAT.tle), shL = orbitShape(LINK_SAT.tle);
+  if (SWIFT_SAT.tle) {
+    // Swift orbit shape (perigee/apogee/ecc) from the current TLE
+    const shS = orbitShape(SWIFT_SAT.tle);
     document.getElementById("orb-sw-peri").textContent = `${shS.periKm.toFixed(1)} km`;
     document.getElementById("orb-sw-apo").textContent  = `${shS.apoKm.toFixed(1)} km`;
     document.getElementById("orb-sw-ecc").textContent  = shS.ecc.toFixed(5);
-    document.getElementById("orb-lk-peri").textContent = `${shL.periKm.toFixed(1)} km`;
-    document.getElementById("orb-lk-apo").textContent  = `${shL.apoKm.toFixed(1)} km`;
-    document.getElementById("orb-lk-ecc").textContent  = shL.ecc.toFixed(5);
-
-    // Phasing drift: LINK's along-track rate vs Swift (+ = LINK gaining/faster, − = trailing/slower)
-    const driftDeg = (shL.nRevDay - shS.nRevDay) * 360;
-    document.getElementById("rdv-drift").textContent = `LINK ${driftDeg >= 0 ? "+" : "−"}${Math.abs(driftDeg).toFixed(1)}°/day`;
-
-    // Daily closest-approach history + closing-trend sparkline
-    renderClosing(updateClosest(range, now));
     document.getElementById("rdv").style.display = "";
   } else {
     document.getElementById("rdv").style.display = "none";
@@ -887,7 +805,7 @@ function tick() {
   updateSky(sunPos.el);
 
   // Satellite markers in sky strip
-  for (const [sat, marker] of [[ISS_SAT, issMarker], [SWIFT_SAT, swiftMarker], [LINK_SAT, linkMarker]]) {
+  for (const [sat, marker] of [[ISS_SAT, issMarker], [SWIFT_SAT, swiftMarker]]) {
     if (sat.tle) {
       const sp = satAzEl(sat.tle, now.getTime());
       if (sp.el > 0) { marker.style.display = ""; placeMarker(marker, sp); }
@@ -937,7 +855,6 @@ const J2K  = Date.UTC(2000, 0, 1, 12, 0, 0); // J2000.0 epoch
 // --- Satellite config objects ---
 const ISS_SAT   = { norad: 25544, name: "ISS",   sym: "🛰️", cacheKey: "iss_tle_cache",   minEl: 10, tle: null, rs: { rise: null, set: null } };
 const SWIFT_SAT = { norad: 28485, name: "Swift",  sym: "🔭", cacheKey: "swift_tle_cache", minEl: 0,  tle: null, rs: { rise: null, set: null } };
-const LINK_SAT  = { norad: 69792, name: "LINK",   sym: "🔗", cacheKey: "link_tle_cache",  minEl: 0,  tle: null, rs: { rise: null, set: null } };
 
 function saveTLECache(key, tle, source = "mirror") {
   try { localStorage.setItem(key, JSON.stringify({ tle, ts: Date.now(), source })); } catch (e) {}
@@ -946,7 +863,10 @@ function loadTLECache(key) {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; }
 }
 
-const ALL_SATS = [ISS_SAT, SWIFT_SAT, LINK_SAT];
+const ALL_SATS = [ISS_SAT, SWIFT_SAT];
+
+// One-time cleanup of storage left over from the removed LINK satellite / rendezvous panel.
+try { localStorage.removeItem("link_tle_cache"); localStorage.removeItem("rdv_min_hist"); } catch (e) {}
 
 async function fetchOneTLE(sat) {
   const r = await fetch(
@@ -1080,7 +1000,6 @@ function satAzEl(tle, tMs) {
   return { az: rev(Math.atan2(E2, -S) * DEG), el: Math.asin(Z / rng) * DEG, alt, subLat, subLon, eci: [xeci, yeci, zeci] };
 }
 
-// Track the minimum Swift↔LINK range per Paris day; carry yesterday's for comparison.
 // Perigee/apogee altitude, eccentricity, period, and mean motion from a TLE.
 function orbitShape(tle) {
   const l2 = tle[2];
@@ -1094,43 +1013,6 @@ function orbitShape(tle) {
     apoKm:  a * (1 + ecc) - RE,
     periodMin: 2 * Math.PI / n / 60
   };
-}
-
-const RDV_HIST_DAYS = 14;
-// Track the daily-minimum Swift↔LINK range in a rolling history (for the closing trend).
-function updateClosest(rangeKm, nowDate) {
-  const today = nowDate.toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
-  let hist = [];
-  try { hist = JSON.parse(localStorage.getItem("rdv_min_hist") || "[]"); } catch {}
-  if (!Array.isArray(hist)) hist = [];
-  const last = hist[hist.length - 1];
-  if (last && last.date === today) {
-    if (rangeKm < last.km) last.km = rangeKm;
-  } else {
-    hist.push({ date: today, km: rangeKm });
-  }
-  if (hist.length > RDV_HIST_DAYS) hist = hist.slice(-RDV_HIST_DAYS);
-  localStorage.setItem("rdv_min_hist", JSON.stringify(hist));
-  return hist;
-}
-
-// Render the daily-minimum history as a sparkline + trend text.
-function renderClosing(hist) {
-  const kms = hist.map(h => h.km);
-  document.getElementById("rdv-closest").textContent = `${Math.round(kms[kms.length - 1]).toLocaleString()} km today`;
-  const bars = "▁▂▃▄▅▆▇█";
-  const lo = Math.min(...kms), hi = Math.max(...kms);
-  document.getElementById("rdv-spark").textContent = kms.map(k =>
-    bars[hi === lo ? 0 : Math.round((k - lo) / (hi - lo) * (bars.length - 1))]).join("");
-  let txt;
-  if (kms.length >= 2) {
-    const first = kms[0], lastk = kms[kms.length - 1];
-    const arrow = lastk < first ? "↓ closing" : lastk > first ? "↑ opening" : "→ flat";
-    txt = `${Math.round(first).toLocaleString()} → ${Math.round(lastk).toLocaleString()} km  ${arrow} over ${kms.length} d`;
-  } else {
-    txt = "gathering daily data…";
-  }
-  document.getElementById("rdv-trend-txt").textContent = txt;
 }
 
 const SAT_DAYS = 3;
@@ -1268,7 +1150,6 @@ function refreshAllSats() {
 
 function refreshISS()   { refreshAllSats(); }
 function refreshSwift() { refreshAllSats(); }
-function refreshLINK()  { refreshAllSats(); }
 
 function initAllSats() {
   const anyStale = ALL_SATS.some(sat => {
